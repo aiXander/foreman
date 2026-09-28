@@ -1,0 +1,6 @@
+{
+  "name": "foreman",
+  "version": "0.1.0",
+  "description": "Foreman: reports Claude Code session activity to the local Foreman supervisor (~/.foreman).",
+  "license": "MIT"
+}

@@ -1,0 +1,13 @@
+#!/bin/sh
+# Foreman MCP sidecar shim. Finds bun even under launchd's restricted PATH and runs the bundled
+# stdio server. Unlike the hook shim this fails loudly (stderr, exit 1): Claude then shows the
+# server as failed instead of silently lacking the tools.
+ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)" || exit 1
+SERVER="$ROOT/dist/mcp.js"
+[ -f "$SERVER" ] || { echo "foreman-mcp: $SERVER missing; run 'bun run build:plugin'" >&2; exit 1; }
+for c in "$FOREMAN_BUN" "$HOME/.bun/bin/bun" /opt/homebrew/bin/bun /usr/local/bin/bun; do
+  if [ -n "$c" ] && [ -x "$c" ]; then exec "$c" "$SERVER" "$@"; fi
+done
+BUN="$(command -v bun 2>/dev/null)" && [ -n "$BUN" ] && exec "$BUN" "$SERVER" "$@"
+echo "foreman-mcp: bun not found" >&2
+exit 1

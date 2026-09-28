@@ -1,0 +1,13 @@
+{
+  "name": "foreman",
+  "owner": {
+    "name": "Xander Steenbrugge"
+  },
+  "plugins": [
+    {
+      "name": "foreman",
+      "source": "./plugin",
+      "description": "Foreman session registration and activity hooks"
+    }
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "$schema": "https://raw.githubusercontent.com/fallow-rs/fallow/main/schema.json",
+  // Entry points: the CLI dispatcher loads commands/* dynamically; the hook bundle, the Vite
+  // UI (index.html -> main.tsx), scripts, spike probes/plugin and test fixture children are
+  // separate programs.
+  "entry": [
+    "src/cli/main.ts",
+    "src/cli/commands/*.ts",
+    "src/hooks/main.ts",
+    "src/ui/main.tsx",
+    "scripts/*.ts",
+    "scripts/spike/*.ts",
+    "scripts/spike/plugin/*.ts",
+    "test/fixtures/*.ts",
+    "test/**/*.test.ts"
+  ],
+  "duplicates": {
+    "minOccurrences": 3
+  },
+  "rules": {}
+}

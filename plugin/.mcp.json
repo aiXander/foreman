@@ -1,0 +1,7 @@
+{
+  "mcpServers": {
+    "foreman": {
+      "command": "${CLAUDE_PLUGIN_ROOT}/bin/foreman-mcp"
+    }
+  }
+}

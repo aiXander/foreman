@@ -1,0 +1,6 @@
+{
+  "name": "foreman",
+  "version": "0.0.0-spike",
+  "description": "Phase-0 spike copy of the Foreman plugin: real registration hooks + delivery probes, a stdio MCP server and a skill.",
+  "license": "MIT"
+}

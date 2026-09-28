@@ -1,0 +1,6 @@
+node_modules/
+dist/
+plugin/dist/
+*.log
+.claude-costs
+.fallow/

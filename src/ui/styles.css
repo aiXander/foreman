@@ -1,0 +1,126 @@
+@import "tailwindcss";
+
+/* Palette tokens. Light by default, dark under prefers-color-scheme. */
+:root {
+  --ground: #e8ebee;
+  --panel: #f7f8f9;
+  --panel-2: #eef1f3;
+  --ink: #1b232c;
+  --ink-2: #5b6773;
+  --line: #d3d8de;
+  --accent: #2446b8;
+  --accent-ink: #ffffff;
+  --sig-work: #1f7a52;
+  --sig-wait: #b06a00;
+  --sig-block: #c0262d;
+  --sig-turn: #3563a8;
+  --sig-idle: #6b7785;
+  --sig-dead: #a3acb5;
+  --warn-bg: #fbf1dc;
+  --term-bg: #14181c;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --ground: #161b20;
+    --panel: #1d242b;
+    --panel-2: #232b33;
+    --ink: #dce2e8;
+    --ink-2: #8c98a4;
+    --line: #2c353e;
+    --accent: #8fa8ff;
+    --accent-ink: #10152a;
+    --sig-work: #4cc38a;
+    --sig-wait: #e0a43a;
+    --sig-block: #ff6b6b;
+    --sig-turn: #6fa0e8;
+    --sig-idle: #8c98a4;
+    --sig-dead: #5b6570;
+    --warn-bg: #3a2f17;
+    color-scheme: dark;
+  }
+}
+
+@theme inline {
+  --color-ground: var(--ground);
+  --color-panel: var(--panel);
+  --color-panel-2: var(--panel-2);
+  --color-ink: var(--ink);
+  --color-ink-2: var(--ink-2);
+  --color-line: var(--line);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-warn-bg: var(--warn-bg);
+  --color-term: var(--term-bg);
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Inter", "Segoe UI", system-ui, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--ground);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  font-size: 14px;
+  line-height: 1.45;
+  -webkit-font-smoothing: antialiased;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* The signal lamp: a session's state, the one loud element on the page. */
+.lamp {
+  --sig: var(--sig-idle);
+  display: inline-block;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: var(--sig);
+  flex: none;
+}
+.lamp[data-hollow="true"] {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--sig);
+}
+.strip {
+  --sig: var(--sig-idle);
+  border-left: 4px solid var(--sig);
+}
+[data-state="working"] { --sig: var(--sig-work); }
+[data-state="starting"] { --sig: var(--sig-turn); }
+[data-state="waiting_input"] { --sig: var(--sig-wait); }
+[data-state="waiting_permission"] { --sig: var(--sig-block); }
+[data-state="finishing"] { --sig: var(--sig-turn); }
+[data-state="idle"] { --sig: var(--sig-idle); }
+[data-state="dead"] { --sig: var(--sig-dead); }
+[data-state="unknown"] { --sig: var(--sig-dead); }
+
+.lamp[data-state="waiting_permission"] {
+  animation: lamp-pulse 1.6s ease-out infinite;
+}
+@keyframes lamp-pulse {
+  0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--sig) 55%, transparent); }
+  100% { box-shadow: 0 0 0 7px color-mix(in srgb, var(--sig) 0%, transparent); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lamp[data-state="waiting_permission"] { animation: none; }
+}
+
+.xterm-host .xterm,
+.xterm-host .xterm-viewport {
+  background-color: var(--term-bg) !important;
+}
+.xterm-host .xterm {
+  padding: 6px 8px;
+  display: inline-block;
+}

@@ -1,0 +1,11 @@
+#!/bin/sh
+# Foreman hook shim. Finds bun even under launchd's restricted PATH and runs the bundled hook.
+# Missing bun or bundle: exit 0 quietly — Foreman must never break a Claude session.
+ROOT="$(cd "$(dirname "$0")/.." 2>/dev/null && pwd)" || exit 0
+HOOK="$ROOT/dist/hook.js"
+[ -f "$HOOK" ] || exit 0
+for c in "$FOREMAN_BUN" "$HOME/.bun/bin/bun" /opt/homebrew/bin/bun /usr/local/bin/bun; do
+  if [ -n "$c" ] && [ -x "$c" ]; then exec "$c" "$HOOK" "$@"; fi
+done
+BUN="$(command -v bun 2>/dev/null)" && [ -n "$BUN" ] && exec "$BUN" "$HOOK" "$@"
+exit 0

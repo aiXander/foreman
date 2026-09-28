@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "foreman": {
+      "command": "bun",
+      "args": ["${CLAUDE_PLUGIN_ROOT}/mcp.ts"]
+    }
+  }
+}
