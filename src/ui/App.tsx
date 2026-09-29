@@ -3,7 +3,7 @@ import { BareTerminal } from "./components/BareTerminal";
 import { LaunchForm } from "./components/LaunchForm";
 import { Overview } from "./components/Overview";
 import { SessionPage, type ViewMode } from "./components/SessionPage";
-import { Sidebar } from "./components/Sidebar";
+import { Logo, Sidebar } from "./components/Sidebar";
 import { useLive } from "./live";
 import { navigate, useRoute } from "./route";
 
@@ -64,7 +64,12 @@ export function App() {
 
   let main: React.ReactNode;
   if (live.status === "loading") {
-    main = <p className="px-6 py-6 text-ink-2">Loading sessions…</p>;
+    main = (
+      <p className="flex items-center gap-2.5 px-8 py-8 text-ink-3">
+        <span className="lamp" data-state="starting" />
+        Loading sessions…
+      </p>
+    );
   } else if (route.name === "launch") {
     main = <LaunchForm sessions={live.sessions} onUnauthorized={onUnauthorized} />;
   } else if (route.name === "terminal") {
@@ -75,9 +80,9 @@ export function App() {
     main = s ? (
       <SessionPage key={s.id} s={s} mode={viewMode} setMode={setViewMode} onUnauthorized={onUnauthorized} />
     ) : (
-      <div className="px-6 py-6">
-        <p>This session isn't known to Foreman.</p>
-        <a className="text-accent underline" href="#/">
+      <div className="enter px-8 py-10">
+        <p className="text-[15px] text-ink">This session isn't known to Foreman.</p>
+        <a className="btn-link mt-2 inline-block text-[13px]" href="#/">
           Back to all sessions
         </a>
       </div>
@@ -91,7 +96,8 @@ export function App() {
       <Sidebar sessions={live.sessions} route={route} />
       <main className="flex min-w-0 flex-1 flex-col">
         {live.status === "offline" ? (
-          <div className="border-b border-line bg-warn-bg px-5 py-1.5 text-[13px]">
+          <div className="flex items-center gap-2.5 border-b border-[rgb(255_194_74/0.25)] bg-warn-bg px-5 py-2 text-[13px] text-[#ffe2a3]">
+            <span className="lamp" data-state="waiting_input" />
             {`Lost contact with the Foreman daemon${live.error ? ` (${live.error})` : ""}. Agents keep running; reconnecting.`}
           </div>
         ) : null}
@@ -104,10 +110,12 @@ export function App() {
 function SignedOut() {
   return (
     <div className="flex h-full items-center justify-center px-6">
-      <div className="max-w-md">
-        <h1 className="text-[18px] font-semibold tracking-tight">Not signed in</h1>
+      <div className="surface enter max-w-md px-8 py-8">
+        <Logo size={36} />
+        <h1 className="mt-5 text-[20px] font-semibold tracking-tight text-white">Not signed in</h1>
         <p className="mt-2 text-ink-2">
-          Run <code className="font-mono text-[13px] text-ink">foreman open</code> in a terminal. It opens this page with a one-time sign-in link.
+          Run <code className="rounded bg-panel-2 px-1.5 py-0.5 font-mono text-[13px] text-ink">foreman open</code> in a terminal. It opens this page with a
+          one-time sign-in link.
         </p>
       </div>
     </div>

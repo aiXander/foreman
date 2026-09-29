@@ -7,7 +7,7 @@ import type { SessionView } from "../../shared/api";
 import { api, Unauthorized } from "../client";
 import { relTime } from "../format";
 
-const btn = "rounded border border-line bg-panel-2 px-2.5 py-0.5 text-[13px] font-medium hover:border-accent disabled:opacity-50";
+const btn = "btn";
 
 export function Controls({ s, now, onOpenTerminal, onUnauthorized }: { s: SessionView; now: number; onOpenTerminal: () => void; onUnauthorized: () => void }) {
   const [busy, setBusy] = useState<"pause" | "stop" | null>(null);
@@ -27,7 +27,7 @@ export function Controls({ s, now, onOpenTerminal, onUnauthorized }: { s: Sessio
   };
 
   return (
-    <div className="mt-3">
+    <div className="mt-4 border-t border-line/70 pt-3.5">
       <div className="flex flex-wrap items-center gap-2">
         <button type="button" disabled={busy !== null} onClick={() => act("pause")} className={btn} title="Ask the agent to finish or safely stop its current step, record progress and end its turn">
           Pause
@@ -43,16 +43,16 @@ export function Controls({ s, now, onOpenTerminal, onUnauthorized }: { s: Sessio
             Stop
           </button>
         ) : null}
-        <span className="text-[12px] text-ink-2">{managed ? "Pause asks politely; Stop interrupts now." : "Pause asks the agent to wrap up. No Stop: this terminal isn't Foreman's."}</span>
+        <span className="ml-1 text-[12px] text-ink-3">{managed ? "Pause asks politely; Stop interrupts now." : "Pause asks the agent to wrap up. No Stop: this terminal isn't Foreman's."}</span>
       </div>
-      {msg ? <p className={`mt-1 text-[13px] ${msg.bad ? "text-[var(--sig-block)]" : "text-ink-2"}`}>{msg.text}</p> : null}
+      {msg ? <p className={`mt-2 text-[13px] ${msg.bad ? "text-[var(--sig-block)]" : "text-ink-2"}`}>{msg.text}</p> : null}
       {s.stop ? (
-        <div className={`mt-2 rounded px-2 py-1 text-[13px] ${s.stop.draft ? "bg-warn-bg" : "bg-panel-2"}`}>
+        <div className={`mt-2.5 rounded-md px-2.5 py-1.5 text-[13px] ${s.stop.draft ? "bg-warn-bg" : "bg-panel-2"}`}>
           {`Stopped ${relTime(s.stop.at, now)}.`}
           {s.stop.draft ? (
             <>
               {" Claude put the interrupted prompt back in its input box. It stays there (Foreman never clears it) and holds back idle delivery until you send or clear it. "}
-              <button type="button" onClick={onOpenTerminal} className="font-medium text-accent underline">
+              <button type="button" onClick={onOpenTerminal} className="btn-link">
                 Open the terminal
               </button>
             </>

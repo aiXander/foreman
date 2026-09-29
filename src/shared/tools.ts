@@ -47,7 +47,7 @@ function sessionForTarget(target: string): string | null {
 function checkTarget(s: JournalState | null, target: string, ctx: ToolContext): JournalState {
   if (!s) throw new ToolError("NOT_REGISTERED", "no Foreman session has this target", "target");
   if (s.target !== target || s.state === "dead") {
-    throw new ToolError("STALE_TARGET", "this target belongs to an ended run; use the target from your most recent Foreman contract", "target");
+    throw new ToolError("STALE_TARGET", "this session's Foreman run has ended or been replaced; carry on without Foreman tools and say so in the terminal", "target");
   }
   if (ctx.envTerminal !== undefined) {
     const mine = ctx.envTerminal ? s.terminal_id === ctx.envTerminal : s.mode === "observed";

@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { ActivityEntry, BatchView, SessionView, TrayView, WorkView } from "../../shared/api";
 import { api, Unauthorized } from "../client";
-import { clock, dateTime, describeActivity, modeLabel, relPath, relTime, sessionTitle, stateLabel, useNow } from "../format";
+import { basename, clock, dateTime, describeActivity, modeLabel, relPath, relTime, sessionTitle, stateLabel, useNow } from "../format";
 import { Controls } from "./Controls";
 import { Deliveries } from "./Deliveries";
 import { Items } from "./Items";
@@ -30,31 +30,30 @@ export function SessionPage({
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-5 py-3">
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-ground-2/60 px-6 py-3 backdrop-blur-xl">
         <Lamp state={s.state} />
-        <h1 className="text-[16px] font-semibold tracking-tight">{sessionTitle(s)}</h1>
-        <span className="text-[13px]">
-          {stateLabel[s.state]}
-          {since ? <span className="text-ink-2">{`, ${since}`}</span> : null}
+        <div className="min-w-0">
+          <p className="truncate font-mono text-[11px] text-ink-3" title={s.project}>
+            {basename(s.project)}
+          </p>
+          <h1 className="truncate text-[17px] leading-tight font-semibold tracking-tight text-white">{sessionTitle(s)}</h1>
+        </div>
+        <span className="chip h-6 px-2.5 text-[12px]" data-state={s.state}>
+          <span className="sig-text font-medium">{stateLabel[s.state]}</span>
+          {since ? <span className="text-ink-3">{since}</span> : null}
         </span>
-        <span className="text-[12px] text-ink-2">{modeLabel[s.mode]}</span>
+        <span className="chip">{modeLabel[s.mode]}</span>
         <span className="flex-1" />
         {hasTerminal ? (
-          <div className="flex rounded-md border border-line p-0.5 text-[13px]" role="group" aria-label="View">
+          <div className="seg" role="group" aria-label="View">
             {(["visual", "terminal"] as const).map((m) => (
-              <button
-                key={m}
-                type="button"
-                aria-pressed={mode === m}
-                onClick={() => setMode(m)}
-                className={`rounded px-2.5 py-0.5 ${mode === m ? "bg-panel-2 font-medium text-ink" : "text-ink-2 hover:text-ink"}`}
-              >
+              <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}>
                 {m === "visual" ? "Card" : "Terminal"}
               </button>
             ))}
           </div>
         ) : s.mode === "observed" ? (
-          <span className="text-[12px] text-ink-2">External terminal</span>
+          <span className="text-[12px] text-ink-3">External terminal</span>
         ) : null}
       </header>
       {showTerminal ? (
@@ -120,26 +119,36 @@ function Card({ s, now, onOpenTerminal, onUnauthorized }: { s: SessionView; now:
   rows.push(["Claude session", <Mono key="n">{s.native_id}</Mono>]);
 
   return (
-    <div className="grid gap-5 px-5 py-5 xl:grid-cols-[minmax(0,1fr)_minmax(0,24rem)]">
+    <div className="enter grid gap-6 px-6 py-6 xl:grid-cols-[minmax(0,1fr)_minmax(0,25rem)]">
       <div className="min-w-0">
-        <section className="strip rounded-md bg-panel px-4 py-3" data-state={s.state}>
-          <p className="text-[15px]">
-            {s.current_tool ? `Running ${s.current_tool}` : stateLabel[s.state]}
+        <section className="strip px-5 py-4" data-state={s.state}>
+          <p className="text-[17px] font-medium tracking-tight text-white">
+            {s.current_tool ? (
+              <>
+                <span className="text-ink-2">Running </span>
+                <span className="font-mono text-[15px]">{s.current_tool}</span>
+              </>
+            ) : (
+              <span className="sig-text">{stateLabel[s.state]}</span>
+            )}
             {s.subagents_active > 0 ? (
-              <span className="text-ink-2">{`, ${s.subagents_active} subagent${s.subagents_active === 1 ? "" : "s"} active`}</span>
+              <span className="text-[14px] font-normal text-ink-2">{`, ${s.subagents_active} subagent${s.subagents_active === 1 ? "" : "s"} active`}</span>
             ) : null}
           </p>
-          {s.last_event_at ? <p className="text-[13px] text-ink-2">{`Last activity ${relTime(s.last_event_at, now)}`}</p> : null}
+          {s.last_event_at ? <p className="mt-0.5 text-[12.5px] text-ink-3">{`Last activity ${relTime(s.last_event_at, now)}`}</p> : null}
           {s.failure_streak >= 3 ? (
-            <p className="mt-2 rounded bg-warn-bg px-2 py-1 text-[13px]">{`${s.failure_streak} consecutive tool failures`}</p>
+            <p className="mt-3 rounded-md bg-warn-bg px-2.5 py-1.5 text-[13px]">{`${s.failure_streak} consecutive tool failures`}</p>
           ) : null}
-          {s.capabilities.cards ? (
-            <p className="mt-2 text-[13px] text-ink-2">
-              {`${s.tool_calls} tool call${s.tool_calls === 1 ? "" : "s"}`}
-              {s.tool_failures > 0 ? `, ${s.tool_failures} failed` : ""}
-            </p>
-          ) : null}
-          <p className="mt-2 text-[13px] text-ink-2">{s.capabilities.label}</p>
+          <div className="mt-3 flex flex-wrap items-center gap-2 text-[12px]">
+            {s.capabilities.cards ? (
+              <span className="chip h-6 px-2.5 text-[12px]">
+                <span className="font-semibold text-ink tabular-nums">{s.tool_calls}</span>
+                {`tool call${s.tool_calls === 1 ? "" : "s"}`}
+                {s.tool_failures > 0 ? <span className="text-[var(--sig-block)]">{`· ${s.tool_failures} failed`}</span> : null}
+              </span>
+            ) : null}
+            <span className="text-ink-3">{s.capabilities.label}</span>
+          </div>
           <Controls s={s} now={now} onOpenTerminal={onOpenTerminal ?? (() => {})} onUnauthorized={onUnauthorized} />
         </section>
 
@@ -148,11 +157,11 @@ function Card({ s, now, onOpenTerminal, onUnauthorized }: { s: SessionView; now:
         {work ? <Handover w={work} now={now} /> : null}
 
         {s.recent_paths.length > 0 ? (
-          <section className="mt-5">
-            <h2 className="mb-1.5 text-[13px] font-semibold text-ink-2">Recently touched files</h2>
-            <ul className="space-y-0.5">
+          <section className="mt-7">
+            <h2 className="eyebrow mb-2">Recently touched files</h2>
+            <ul className="surface divide-y divide-line/70 overflow-hidden">
               {s.recent_paths.map((p) => (
-                <li key={p} className="truncate" title={p}>
+                <li key={p} className="truncate px-3.5 py-1.5 text-ink-2 hover:bg-panel-2 hover:text-ink" title={p}>
                   <Mono>{relPath(p, s.project)}</Mono>
                 </li>
               ))}
@@ -160,13 +169,13 @@ function Card({ s, now, onOpenTerminal, onUnauthorized }: { s: SessionView; now:
           </section>
         ) : null}
 
-        <section className="mt-5">
-          <h2 className="mb-1.5 text-[13px] font-semibold text-ink-2">Details</h2>
-          <dl className="grid grid-cols-[max-content_minmax(0,1fr)] gap-x-5 gap-y-1 text-[13px]">
+        <section className="mt-7">
+          <h2 className="eyebrow mb-2">Details</h2>
+          <dl className="surface grid grid-cols-[max-content_minmax(0,1fr)] gap-x-6 gap-y-2 px-4 py-3.5 text-[13px]">
             {rows.map(([k, v]) => (
               <div key={k} className="contents">
-                <dt className="text-ink-2">{k}</dt>
-                <dd className="min-w-0 break-words">{v}</dd>
+                <dt className="text-ink-3">{k}</dt>
+                <dd className="min-w-0 break-words text-ink">{v}</dd>
               </div>
             ))}
           </dl>
@@ -177,22 +186,23 @@ function Card({ s, now, onOpenTerminal, onUnauthorized }: { s: SessionView; now:
         <section className="min-w-0">
           {steerable ? <Tray session={s.id} t={t} reload={reload} onUnauthorized={onUnauthorized} /> : null}
           <Deliveries s={s} batches={batches} now={now} onOpenTerminal={onOpenTerminal} onChanged={reload} onUnauthorized={onUnauthorized} />
-          <h2 className="mt-5 mb-1.5 text-[13px] font-semibold text-ink-2">Activity</h2>
+          <h2 className="eyebrow mt-7 mb-2.5">Activity</h2>
           {activityError ? <p className="text-[13px] text-[var(--sig-block)]">{`Couldn't load activity: ${activityError}`}</p> : null}
-          {activity && activity.length === 0 ? <p className="text-[13px] text-ink-2">Nothing recorded yet.</p> : null}
+          {activity && activity.length === 0 ? <p className="text-[13px] text-ink-3">Nothing recorded yet.</p> : null}
           {activity && activity.length > 0 ? (
-            <ol className="space-y-1 text-[13px]">
+            <ol className="relative ml-1 border-l border-line-2 text-[13px]">
               {[...activity].reverse().map((a) => {
                 const [what, extra] = describeActivity(a);
                 return (
-                <li key={a.seq} className="grid grid-cols-[4.5rem_minmax(0,1fr)] gap-2">
-                  <span className="text-ink-2 tabular-nums">{clock(a.ts)}</span>
+                <li key={a.seq} className="relative grid grid-cols-[4.25rem_minmax(0,1fr)] gap-2 py-1 pl-4">
+                  <span aria-hidden className="absolute top-[11px] -left-[3.5px] h-[6px] w-[6px] rounded-full bg-line-2 ring-2 ring-ground" />
+                  <span className="font-mono text-[11.5px] leading-[1.7] text-ink-3 tabular-nums">{clock(a.ts)}</span>
                   <span className="min-w-0">
-                    <span>{what}</span>
-                    {a.tool ? <span className="text-ink-2">{` ${a.tool}`}</span> : null}
-                    {extra ? <span className="text-ink-2">{`, ${extra}`}</span> : null}
+                    <span className="text-ink">{what}</span>
+                    {a.tool ? <span className="font-mono text-[12px] text-ink-2">{` ${a.tool}`}</span> : null}
+                    {extra ? <span className="text-ink-3">{`, ${extra}`}</span> : null}
                     {a.paths.length > 0 ? (
-                      <span className="block truncate">
+                      <span className="block truncate text-ink-3">
                         <Mono>{a.paths.map((p) => relPath(p, s.project)).join(", ")}</Mono>
                       </span>
                     ) : null}
@@ -209,5 +219,5 @@ function Card({ s, now, onOpenTerminal, onUnauthorized }: { s: SessionView; now:
 }
 
 function Mono({ children }: { children: React.ReactNode }) {
-  return <span className="font-mono text-[12.5px]">{children}</span>;
+  return <span className="font-mono text-[12px]">{children}</span>;
 }

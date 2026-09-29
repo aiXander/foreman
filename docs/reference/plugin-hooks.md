@@ -12,15 +12,17 @@ Claude Code upgrade changes hook payloads.
 | `plugin/hooks/hooks.json` | 12 hooks → `${CLAUDE_PLUGIN_ROOT}/bin/foreman-hook <Event>`, 2–5 s timeouts. |
 | `plugin/bin/foreman-hook` | sh shim: finds bun even under launchd's PATH, runs `plugin/dist/hook.js`; exits 0 if either is missing. |
 | `plugin/dist/hook.js` | Bundle of `src/hooks/main.ts` — **build with `bun run build:plugin`**; gitignored. |
-| `src/hooks/main.ts` | Entrypoint: always exits 0; SessionStart/End → `registration.ts` (SessionStart then prints the Foreman contract); others → one `activity` event, then the delivery duty below. |
+| `src/hooks/main.ts` | Entrypoint: always exits 0; SessionStart/End → `registration.ts` (SessionStart then prints the Foreman contract); PreToolUse on a Foreman tool → `stamp.ts`; others → one `activity` event, then the delivery duty below. |
+| `src/hooks/stamp.ts` | Stamps the caller's current `target` onto Foreman MCP calls (`updatedInput`), denies subagents and unregistered sessions — see [protocol.md](protocol.md). |
 | `.claude-plugin/marketplace.json` | Local marketplace pointing at `./plugin`, for a later user-scoped install (not installed). |
 | `scripts/spike/plugin/` | Phase-0 **spike** copy named `foreman`: the real hooks + delivery probe hooks (`spike-hook.ts`), a no-SDK stdio MCP server (`mcp.ts`) and a `foreman` skill. Throwaway evidence, not the product plugin. |
 
 ## Rules
 
-- Hooks print only deliberate protocol context: SessionStart's `additionalContext` contract (with the
-  run's target — see [protocol.md](protocol.md)), `{"systemMessage": "Foreman unavailable: …"}` on
-  registration failure (shown to the user, not the model), or one human batch (below).
+- Hooks print only deliberate protocol context: SessionStart's `additionalContext` contract (see
+  [protocol.md](protocol.md)), `{"systemMessage": "Foreman unavailable: …"}` on registration failure
+  (shown to the user, not the model), one human batch (below), or PreToolUse's target stamp / refusal
+  on a `mcp__plugin_foreman_foreman__*` call (nothing for any other tool).
 - **Delivery routes:** PostToolUse and PostToolUseFailure (route `post_tool_use`) and Stop (route
   `stop`): `claimNext` (fsynced) → print `hookSpecificOutput{hookEventName: <this event>,
   additionalContext: hookContext(...)}` via `Bun.write` → `settle(transport_sent)`; a failed write
@@ -76,7 +78,11 @@ fires); accepting writes Claude's own config, so live demos run in the (trusted)
   `mcp__plugin_foreman_foreman__<tool>`. The tools are **deferred** (the model must ToolSearch them
   first) and **need permission** (manual mode prompts; `--allowedTools mcp__plugin_foreman_foreman__ping`
   pre-allows). The stdio sidecar inherits `FOREMAN_TERMINAL_ID` and **survives `/clear`** — it
-  cannot know the current conversation by itself, which is why every tool takes `target`.
+  cannot know the current conversation by itself, which is why every call carries a `target`.
+- **PreToolUse `updatedInput` works on plugin MCP tools** (2026-09-28, `gate7-target-stamp.ts`, 4/4):
+  a field the tool doesn't advertise, added by the hook, reaches the server; `permissionDecision:
+  allow` skips the permission prompt without `--allowedTools`; a subagent's call carries `agent_id`
+  and a `deny` keeps it from the server (the subagent sees the reason).
 
 ## Cost
 

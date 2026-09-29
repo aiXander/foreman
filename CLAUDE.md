@@ -11,11 +11,13 @@ Single user, local only, macOS first, MIT. Nothing is deployed.
 **Built:** phase 1 "host + see" — managed terminals, session journals, passive hooks, daemon with
 auth, session list/card/terminal UI, minimal launcher — plus ptyd's idle-delivery ops
 (`input_state`/`submit`) from the phase-0 spike, which proved every delivery/identity gate.
-Phase 2 in progress: the agent protocol is built (SessionStart contract with the run's target, stdio
-MCP sidecar with the `foreman_*` tools, `foreman:foreman` skill, batch/claim queue on the journal),
-human batches are delivered (PostToolUse/Stop hooks, daemon idle worker, Retry on the card), and
-the human steers from the card (persisted send tray → Send, Pause, Stop = one ESC, retarget/cancel,
-brief/progress/items/handover sections). **Next:** peers. Plan: `docs/TODO/`.
+Phase 2 is done (exit evidence 12/12 live): the agent protocol (SessionStart contract, stdio MCP sidecar with the
+`foreman_*` tools whose session `target` a PreToolUse hook stamps, `foreman:foreman` skill,
+batch/claim queue on the journal), human batch delivery
+(PostToolUse/Stop hooks, daemon idle worker, Retry on the card), steering from the card (persisted send
+tray → Send, Pause, Stop = one ESC, retarget/cancel, brief/progress/items/handover sections, safe
+Markdown), and per-project peers (contract block + `foreman_peers`; messaging is Claude's native
+`SendMessage`). **Next:** phase 3 (global inbox + attention). Plan: `docs/TODO/`.
 
 ## Blast radius
 
@@ -25,7 +27,7 @@ a prompt is sent), and services under a temporary `FOREMAN_HOME`.
 Ask first: anything that writes `~/.claude/` (installing the plugin user-wide, settings, hooks),
 sending prompts to real Claude sessions beyond a one-line `--model haiku` smoke (this includes the
 `scripts/spike/gate*.ts` probes: each runs a few haiku turns under `/tmp/fh`),
-`scripts/phase2-delivery-demo.ts` (~7 haiku turns), and `foreman down --ptyd` / killing ptyd
+`scripts/phase2-delivery-demo.ts` (~7 haiku turns), `scripts/phase2-exit-demo.ts` (~10 haiku turns, two named sessions that message each other), and `foreman down --ptyd` / killing ptyd
 against the real `~/.foreman` (it ends every managed agent).
 
 ## Documentation map
@@ -34,7 +36,7 @@ against the real `~/.foreman` (it ends every managed agent).
 |---|---|
 | [docs/reference/storage-and-identity.md](docs/reference/storage-and-identity.md) | touching journals, locks, `~/.foreman/` layout, session/run registration, the reducer or liveness |
 | [docs/reference/terminal-host.md](docs/reference/terminal-host.md) | touching ptyd, the socket protocol, snapshots/replay, idle delivery (`input_state`/`submit`, readiness), Stop (`interrupt`) or `foreman run/attach/ls/kill` |
-| [docs/reference/protocol.md](docs/reference/protocol.md) | touching the MCP tools/schemas (`protocol.ts`, `tools.ts`), the SessionStart contract, the skill, declared work (`work.ts`) or the batch queue/claims (`delivery.ts`) |
+| [docs/reference/protocol.md](docs/reference/protocol.md) | touching the MCP tools/schemas (`protocol.ts`, `tools.ts`), the SessionStart contract, the skill, declared work (`work.ts`), peers (`peers.ts`) or the batch queue/claims (`delivery.ts`) |
 | [docs/reference/plugin-hooks.md](docs/reference/plugin-hooks.md) | touching `plugin/` or `src/hooks/`, building hook delivery / MCP / skill (verified mechanisms and namespaces), or after a Claude Code upgrade changes hook payloads |
 | [docs/reference/daemon-and-ui.md](docs/reference/daemon-and-ui.md) | touching the daemon, auth, the API contract, SSE, the terminal WebSocket, the idle-delivery worker, delivery display/Retry, the send tray / Send / Pause / Stop routes, or the UI card |
 | [docs/TODO/](docs/TODO/) | planning the next phase; the build plan's contracts for unbuilt work live there |
@@ -47,8 +49,9 @@ against the real `~/.foreman` (it ends every managed agent).
 - Hosted Claude behaves oddly (no transcript, wrong surface) → env leaked from a parent agent;
   check the scrub list in `src/ptyd/terminal.ts`.
 - Foreman tools missing / "server failed" in Claude → `plugin/dist/mcp.js` not built, or bun not
-  found by `plugin/bin/foreman-mcp` (it logs to stderr). Tool calls prompting for permission in a
-  managed session → `--allowedTools=` missing from the launch argv (`managedClaudeArgv`).
+  found by `plugin/bin/foreman-mcp` (it logs to stderr). A Foreman call refused with "could not
+  identify this session" or prompting for permission → the PreToolUse hook didn't stamp it
+  (`plugin/dist/hook.js` not built; `src/hooks/stamp.ts`). The model never passes `target` itself.
 - A batch sits queued on an idle managed session → the card's "Sent to the agent" line carries the
   idle worker's reason (writer lease held, draft in the box, dialog); nothing is typed on a guess.
 - A hosted Claude never registers (no SessionStart) in a new cwd → it is sitting on the folder-trust
@@ -105,7 +108,9 @@ updated, the TODO plan drained. Commits only when asked.
 - One journal writer at a time per session (directory lock); `seq` orders events, timestamps don't.
 - ptyd outlives the daemon and the browser; the daemon reconnects to ptyd and re-mirrors terminals.
 - A managed session is routed by `FOREMAN_TERMINAL_ID` → SessionStart → `run.started.target`,
-  then the daemon `bind`s that target onto the terminal. Never route by cwd or "most recent".
+  then the daemon `bind`s that target onto the terminal. A Foreman tool call is routed by the
+  PreToolUse hook's `session_id` → current target (`src/hooks/stamp.ts`); the model never supplies it.
+  Never route by cwd or "most recent".
 
 ## Commands
 
@@ -122,5 +127,6 @@ bun src/cli/main.ts call <tool> '<json>'  # protocol tool via CLI (MCP mirror)
 bun scripts/gen-skill-reference.ts       # regenerate the skill's schema reference after schema edits
 bun scripts/phase1-demo.ts    # real-Claude phase-1 exit evidence (isolated home)
 bun scripts/phase2-delivery-demo.ts  # real-haiku delivery exit evidence in /tmp/fh (ask first)
+bun scripts/phase2-exit-demo.ts      # real-haiku phase-2 exit evidence: task loop, peers, Stop (ask first)
 ```
 Isolate any experiment with `FOREMAN_HOME=/tmp/fh FOREMAN_PORT=7801` (keep the path short).

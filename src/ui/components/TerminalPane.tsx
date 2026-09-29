@@ -1,6 +1,8 @@
 // Live view of one ptyd terminal over the daemon's WebSocket proxy.
-// Read-only by default and rendered at the terminal's own geometry; only the viewer holding
-// control fits the xterm to its container, resizes the PTY and sends input. Terminal query
+// Always typeable: the writer lease follows keyboard focus. Focusing the xterm takes control
+// (over any other viewer), losing focus releases it, so idle delivery is only held back while
+// someone is actually at this terminal. Unfocused, it renders at the terminal's own geometry;
+// only the leaseholder fits the xterm to its container, resizes the PTY and sends input. Terminal query
 // replies generated while replaying a snapshot or already-seen output are suppressed, so the
 // agent never receives a duplicate answer from this viewer.
 import { FitAddon } from "@xterm/addon-fit";
@@ -28,23 +30,37 @@ const decode = (b64: string): Uint8Array => {
 };
 
 const theme = {
-  background: "#14181c",
-  foreground: "#d7dde3",
-  cursor: "#d7dde3",
-  selectionBackground: "#3a4a63",
-  black: "#1d242b",
-  brightBlack: "#5b6570",
+  background: "#06070a",
+  foreground: "#e6e9f0",
+  cursor: "#c4bbff",
+  cursorAccent: "#06070a",
+  selectionBackground: "#a597ff55",
+  black: "#1a1d26",
+  red: "#ff6b81",
+  green: "#3ee29a",
+  yellow: "#ffc24a",
+  blue: "#62a8ff",
+  magenta: "#b79bff",
+  cyan: "#4fd6e6",
+  white: "#d5dae4",
+  brightBlack: "#5d6576",
+  brightRed: "#ff8fa0",
+  brightGreen: "#7af0bb",
+  brightYellow: "#ffd786",
+  brightBlue: "#94c4ff",
+  brightMagenta: "#d0bfff",
+  brightCyan: "#8be8f2",
+  brightWhite: "#ffffff",
 };
 
 export function TerminalPane({ terminalId }: { terminalId: string }) {
   const host = useRef<HTMLDivElement>(null);
-  const actions = useRef<{ control: (a: "acquire" | "release" | "takeover") => void } | null>(null);
   const [st, setSt] = useState<Status>({ conn: "connecting", viewerId: null, writer: null, exit: null, error: null, cols: null, rows: null });
 
   useEffect(() => {
     const el = host.current!;
     const term = new Terminal({
-      fontFamily: 'ui-monospace, "SF Mono", Menlo, monospace',
+      fontFamily: '"JetBrains Mono", ui-monospace, "SF Mono", Menlo, monospace',
       fontSize: 13,
       scrollback: 10000,
       theme,
@@ -67,11 +83,23 @@ export function TerminalPane({ terminalId }: { terminalId: string }) {
     let replayUntil = -1;
     let suppress = 0;
     let geom = { cols: 80, rows: 24 };
+    // Focus tracking for the lease. `claiming` covers the gap between sending a takeover and its
+    // `control` reply: the daemon handles one socket's frames in order, so input sent after the
+    // takeover lands after it.
+    let focused = false;
+    let claiming = false;
+    let firstHello = true;
+    let releaseTimer: ReturnType<typeof setTimeout> | undefined;
 
     const send = (f: WsClientFrame) => {
       if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(f));
     };
     const mine = () => viewerId !== null && writer === viewerId;
+    const claim = () => {
+      if (mine() || claiming || viewerId === null) return;
+      claiming = true;
+      send({ t: "control", action: "takeover" });
+    };
     const patch = (p: Partial<Status>) => setSt((s) => ({ ...s, ...p }));
 
     const applyGeometry = () => {
@@ -104,6 +132,9 @@ export function TerminalPane({ terminalId }: { terminalId: string }) {
           patch({ viewerId, writer, conn: "open", error: null, cols: geom.cols, rows: geom.rows });
           applyGeometry();
           if (f.terminal.state === "exited") patch({ exit: f.terminal.exit });
+          else if (focused) claim();
+          else if (firstHello) term.focus(); // opening the terminal view puts the keyboard here
+          firstHello = false;
           break;
         case "snapshot_begin":
           epoch = f.stream_epoch;
@@ -143,9 +174,9 @@ export function TerminalPane({ terminalId }: { terminalId: string }) {
           break;
         case "control":
           writer = f.writer;
+          claiming = false;
           patch({ writer });
           applyGeometry();
-          if (mine()) term.focus();
           break;
         case "error":
           patch({ error: f.message || f.code });
@@ -171,6 +202,7 @@ export function TerminalPane({ terminalId }: { terminalId: string }) {
       ws.onclose = () => {
         viewerId = null;
         writer = null;
+        claiming = false;
         if (disposed) return;
         patch({ conn: "reconnecting", viewerId: null, writer: null });
         retry = setTimeout(connect, backoff);
@@ -179,9 +211,26 @@ export function TerminalPane({ terminalId }: { terminalId: string }) {
     };
 
     const dataSub = term.onData((d) => {
-      if (suppress > 0 || !mine()) return;
+      if (suppress > 0 || !(mine() || claiming)) return;
       send({ t: "input", data: d });
     });
+
+    // Release after a short grace so clicks inside xterm (scrollbar, selection) that bounce focus
+    // don't flap the lease; switching tab, window or to the card view all blur the xterm.
+    const onFocusIn = () => {
+      focused = true;
+      clearTimeout(releaseTimer);
+      claim();
+    };
+    const onFocusOut = () => {
+      focused = false;
+      clearTimeout(releaseTimer);
+      releaseTimer = setTimeout(() => {
+        if (!focused && mine()) send({ t: "control", action: "release" });
+      }, 200);
+    };
+    el.addEventListener("focusin", onFocusIn);
+    el.addEventListener("focusout", onFocusOut);
 
     let resizeTimer: ReturnType<typeof setTimeout> | undefined;
     const ro = new ResizeObserver(() => {
@@ -192,18 +241,19 @@ export function TerminalPane({ terminalId }: { terminalId: string }) {
     });
     ro.observe(el);
 
-    actions.current = { control: (action) => send({ t: "control", action }) };
     connect();
 
     return () => {
       disposed = true;
       clearTimeout(retry);
       clearTimeout(resizeTimer);
+      clearTimeout(releaseTimer);
+      el.removeEventListener("focusin", onFocusIn);
+      el.removeEventListener("focusout", onFocusOut);
       ro.disconnect();
       dataSub.dispose();
       ws?.close();
       term.dispose();
-      actions.current = null;
     };
   }, [terminalId]);
 
@@ -211,54 +261,35 @@ export function TerminalPane({ terminalId }: { terminalId: string }) {
   const otherHolds = st.writer !== null && !holding;
   const exited = st.exit !== null;
 
+  const tone = toolbarTone(st.conn, holding, otherHolds);
+
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="flex items-center gap-3 border-b border-line bg-panel px-3 py-2 text-[13px]">
-        <span className="text-ink-2">
+      <div className="flex items-center gap-3 border-b border-line bg-ground-2/80 px-4 py-2 text-[13px] backdrop-blur-xl">
+        <span className="lamp !animate-none" data-state={tone} data-hollow={exited} />
+        <span className={holding ? "font-medium text-ink" : "text-ink-2"}>
           {st.conn === "open"
             ? exited
               ? `Process exited${st.exit?.code != null ? ` with code ${st.exit.code}` : ""}${st.exit?.signal ? ` (${st.exit.signal})` : ""}`
               : holding
-                ? "You have control"
+                ? "Live, typing goes to Claude"
                 : otherHolds
-                  ? "Another viewer has control"
-                  : "Viewing, read-only"
+                  ? "Someone else is typing here. Click the terminal to take over"
+                  : "Live. Click the terminal to type"
             : st.conn === "reconnecting"
               ? "Reconnecting…"
               : "Connecting…"}
         </span>
-        {st.cols && st.rows ? <span className="text-ink-2 tabular-nums">{`${st.cols}×${st.rows}`}</span> : null}
+        {st.cols && st.rows ? <span className="chip font-mono tabular-nums">{`${st.cols}×${st.rows}`}</span> : null}
         {st.error ? <span className="text-[var(--sig-block)]">{st.error}</span> : null}
-        <span className="flex-1" />
-        {st.conn === "open" && !exited ? (
-          holding ? (
-            <Btn onClick={() => actions.current?.control("release")}>Release control</Btn>
-          ) : otherHolds ? (
-            <Btn onClick={() => actions.current?.control("takeover")}>Take over</Btn>
-          ) : (
-            <Btn primary onClick={() => actions.current?.control("acquire")}>
-              Take control
-            </Btn>
-          )
-        ) : null}
       </div>
       <div className="xterm-host min-h-0 flex-1 overflow-auto bg-term" ref={host} />
     </div>
   );
 }
 
-function Btn({ children, onClick, primary }: { children: React.ReactNode; onClick: () => void; primary?: boolean }) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={
-        primary
-          ? "rounded-md bg-accent px-2.5 py-1 font-medium text-accent-ink hover:opacity-90"
-          : "rounded-md border border-line px-2.5 py-1 text-ink hover:bg-panel-2"
-      }
-    >
-      {children}
-    </button>
-  );
+/** Toolbar lamp colour (borrows the session-state palette): green = yours, blue = watching, amber = connecting or someone else's. An exited process shows hollow. */
+function toolbarTone(conn: Conn, holding: boolean, otherHolds: boolean): string {
+  if (conn !== "open" || otherHolds) return "waiting_input";
+  return holding ? "working" : "starting";
 }

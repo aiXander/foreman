@@ -70,7 +70,7 @@ describe("registration", () => {
     expect(b.events.some((e) => e.type === "run.ended" && (e.payload as any).reason === "superseded" && e.run === a.state.run)).toBe(true);
   });
 
-  test("SessionStart injects the Foreman contract with the CURRENT run's target on every source", async () => {
+  test("SessionStart injects the Foreman contract on every source, without any target", async () => {
     const contract = (r: { stdout: string }) => {
       const out = JSON.parse(r.stdout).hookSpecificOutput;
       expect(out.hookEventName).toBe("SessionStart");
@@ -79,18 +79,13 @@ describe("registration", () => {
     const term = { FOREMAN_TERMINAL_ID: crypto.randomUUID() };
     const first = contract(hook("SessionStart", { session_id: "c1", source: "startup" }, term));
     const t1 = (await stateOf("c1"))!.state.target!;
-    expect(first).toContain(`Your Foreman target: ${t1}`);
+    expect(first).not.toContain(t1); // the PreToolUse hook stamps it; the model never sees it
     expect(first).toContain("mcp__plugin_foreman_foreman__foreman_brief");
     expect(first).toContain("only end-of-task summary"); // managed: card only (decided 2026-09-28)
 
-    const compacted = contract(hook("SessionStart", { session_id: "c1", source: "compact" }, term));
-    expect(compacted).toContain(`Your Foreman target: ${t1}`);
-    const resumed = contract(hook("SessionStart", { session_id: "c1", source: "resume" }, term));
-    const t2 = (await stateOf("c1"))!.state.target!;
-    expect(t2).not.toBe(t1);
-    expect(resumed).toContain(`Your Foreman target: ${t2}`);
-    expect(resumed).not.toContain(t1);
-
+    for (const source of ["compact", "resume", "clear"]) {
+      expect(contract(hook("SessionStart", { session_id: "c1", source }, term))).toContain("# Foreman contract");
+    }
     const obs = contract(hook("SessionStart", { session_id: "c2", source: "startup" }));
     expect(obs).toContain("normal terminal summary AND call foreman_handover"); // observed: summary + card
   });
@@ -283,5 +278,35 @@ describe("hook delivery (§9.2)", () => {
     hook("UserPromptSubmit", { session_id: "d4", prompt: "SECRET: my own new instruction" });
     expect(await statusOf("d4", pause)).toBe("cancelled");
     expect(readFileSync(join(home, "sessions", s.session, "events.jsonl"), "utf8")).not.toContain("SECRET");
+  });
+});
+
+describe("target stamping (PreToolUse on a Foreman tool)", () => {
+  const TOOL = "mcp__plugin_foreman_foreman__foreman_brief";
+  const pre = (input: Record<string, unknown>) => {
+    const r = hook("PreToolUse", input);
+    expect(r.code).toBe(0);
+    return r.stdout.trim() ? JSON.parse(r.stdout).hookSpecificOutput : null;
+  };
+
+  test("stamps the CURRENT run's target over whatever the model sent, and follows /resume", async () => {
+    hook("SessionStart", { session_id: "s1", source: "startup" });
+    const t1 = (await stateOf("s1"))!.state.target!;
+    const out = pre({ session_id: "s1", tool_name: TOOL, tool_input: { goal: "g", target: "made-up" } });
+    expect(out).toEqual({ hookEventName: "PreToolUse", permissionDecision: "allow", updatedInput: { goal: "g", target: t1 } });
+
+    hook("SessionStart", { session_id: "s1", source: "resume" });
+    const t2 = (await stateOf("s1"))!.state.target!;
+    expect(t2).not.toBe(t1);
+    expect(pre({ session_id: "s1", tool_name: TOOL, tool_input: {} }).updatedInput.target).toBe(t2);
+  });
+
+  test("refuses subagents and unregistered sessions; says nothing for other tools", () => {
+    hook("SessionStart", { session_id: "s2", source: "startup" });
+    const sub = pre({ session_id: "s2", agent_id: "sub-1", tool_name: TOOL, tool_input: {} });
+    expect(sub).toMatchObject({ permissionDecision: "deny" });
+    expect(sub.updatedInput).toBeUndefined();
+    expect(pre({ session_id: "ghost", tool_name: TOOL, tool_input: {} })).toMatchObject({ permissionDecision: "deny" });
+    expect(pre({ session_id: "s2", tool_name: "Read", tool_input: { file_path: "/a" } })).toBeNull();
   });
 });

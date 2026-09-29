@@ -18,7 +18,19 @@ const statusLabel: Record<BatchStatusView, string> = {
   cancelled: "Cancelled",
 };
 
-const routeLabel = { post_tool_use: "during a tool call", stop: "at turn end", idle_submit: "typed at the idle prompt" } as const;
+/** Which signal colour a status chip borrows (via the lamp's data-state palette). */
+const statusTone: Record<BatchStatusView, string> = {
+  queued: "idle",
+  attempting: "starting",
+  orphaned: "waiting_input",
+  uncertain: "waiting_input",
+  transport_sent: "starting",
+  seen: "starting",
+  acted: "working",
+  cancelled: "dead",
+};
+
+const routeLabel ={ post_tool_use: "during a tool call", stop: "at turn end", idle_submit: "typed at the idle prompt" } as const;
 
 interface Props {
   s: SessionView;
@@ -33,10 +45,10 @@ export function Deliveries({ s, batches, now, onOpenTerminal, onChanged, onUnaut
   const d = s.delivery;
   if (!d && batches.length === 0) return null;
   return (
-    <section className="mt-5">
-      <h2 className="mb-1.5 text-[13px] font-semibold text-ink-2">Sent to the agent</h2>
+    <section className="mt-7">
+      <h2 className="eyebrow mb-2.5">Sent to the agent</h2>
       {d?.held ? (
-        <p className="mb-2 rounded bg-warn-bg px-2 py-1 text-[13px]">
+        <p className="mb-2.5 rounded-md bg-warn-bg px-2.5 py-1.5 text-[13px]">
           {d.held.reason === "paused"
             ? `Paused. ${d.held.detail}`
             : d.held.reason === "attempting"
@@ -44,9 +56,9 @@ export function Deliveries({ s, batches, now, onOpenTerminal, onChanged, onUnaut
               : "A delivery is unconfirmed (below); later sends wait until you retry it or it is confirmed."}
         </p>
       ) : null}
-      {d?.waiting ? <p className="mb-2 text-[13px]">{`${d.queued} queued. ${d.waiting}`}</p> : null}
+      {d?.waiting ? <p className="mb-2.5 text-[13px] text-ink-2">{`${d.queued} queued. ${d.waiting}`}</p> : null}
       {d && d.old_run > 0 ? (
-        <p className="mb-2 text-[13px] text-ink-2">{`${d.old_run} sent to an earlier run of this conversation and not delivered: move ${d.old_run === 1 ? "it" : "them"} to the current run or cancel (below).`}</p>
+        <p className="mb-2.5 text-[13px] text-ink-3">{`${d.old_run} sent to an earlier run of this conversation and not delivered: move ${d.old_run === 1 ? "it" : "them"} to the current run or cancel (below).`}</p>
       ) : null}
       <ol className="space-y-2">
         {batches.slice(0, 10).map((b) => (
@@ -81,25 +93,28 @@ function Batch({ s, b, now, onOpenTerminal, onChanged, onUnauthorized }: Omit<Pr
   };
   const acted = b.actions.filter((a) => a.acted).length;
   const queued = b.status === "queued";
-  const btn = "rounded border border-line bg-panel-2 px-2 py-0.5 font-medium hover:border-accent disabled:opacity-50";
+  const btn = "btn btn-sm";
   return (
-    <li className="rounded-md border border-line bg-panel px-3 py-2 text-[13px]" data-batch={b.batch_id}>
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="font-medium">{b.kind === "pause" ? "Pause" : `${b.actions.length} action${b.actions.length === 1 ? "" : "s"}`}</span>
-        <span>{statusLabel[b.status]}</span>
-        {last?.outcome === "transport_sent" && b.status !== "cancelled" ? <span className="text-ink-2">{routeLabel[last.route]}</span> : null}
-        {b.kind === "send" && (b.status === "acted" || acted > 0) ? <span className="text-ink-2">{`${acted}/${b.actions.length} acted`}</span> : null}
-        {!b.current_run ? <span className="text-ink-2">earlier run</span> : null}
+    <li className={`surface px-3.5 py-2.5 text-[13px] ${b.status === "cancelled" ? "opacity-60" : ""}`} data-batch={b.batch_id}>
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="font-medium text-white">{b.kind === "pause" ? "Pause" : `${b.actions.length} action${b.actions.length === 1 ? "" : "s"}`}</span>
+        <span className="chip" data-state={statusTone[b.status]}>
+          <span className="lamp !h-1.5 !w-1.5 !animate-none !shadow-none" data-state={statusTone[b.status]} />
+          <span className="sig-text">{statusLabel[b.status]}</span>
+        </span>
+        {last?.outcome === "transport_sent" && b.status !== "cancelled" ? <span className="text-[12px] text-ink-3">{routeLabel[last.route]}</span> : null}
+        {b.kind === "send" && (b.status === "acted" || acted > 0) ? <span className="text-[12px] text-ink-3 tabular-nums">{`${acted}/${b.actions.length} acted`}</span> : null}
+        {!b.current_run ? <span className="chip">earlier run</span> : null}
         <span className="flex-1" />
-        <span className="text-ink-2">{relTime(b.created_at, now)}</span>
+        <span className="text-[12px] text-ink-3">{relTime(b.created_at, now)}</span>
       </div>
-      {b.cancelled ? <p className="text-ink-2">{b.cancelled.by === "auto" ? `Not needed: ${b.cancelled.reason}.` : `Cancelled: ${b.cancelled.reason}.`}</p> : null}
-      {b.warning ? <p className="mt-1 rounded bg-warn-bg px-2 py-1">{b.warning}</p> : null}
+      {b.cancelled ? <p className="mt-1 text-ink-3">{b.cancelled.by === "auto" ? `Not needed: ${b.cancelled.reason}.` : `Cancelled: ${b.cancelled.reason}.`}</p> : null}
+      {b.warning ? <p className="mt-1.5 rounded-md bg-warn-bg px-2.5 py-1.5">{b.warning}</p> : null}
       {b.kind === "send" && acted > 0 ? (
-        <ul className="mt-1 space-y-0.5 text-[12px]">
+        <ul className="mt-1.5 space-y-0.5 text-[12px]">
           {b.actions.map((a) =>
             a.acted ? (
-              <li key={a.action_id} className={a.acted.outcome !== "applied" ? "rounded bg-warn-bg px-1.5 py-0.5" : "text-ink-2"}>
+              <li key={a.action_id} className={a.acted.outcome !== "applied" ? "rounded-md bg-warn-bg px-2 py-1" : "text-ink-3"}>
                 {`${actionWords[a.type] ?? a.type}${a.item_id ? ` (${a.item_id})` : ""}: ${a.acted.outcome}`}
                 {a.acted.note ? <span className="block text-ink">{`Agent's note: ${a.acted.note}`}</span> : null}
               </li>
@@ -108,7 +123,7 @@ function Batch({ s, b, now, onOpenTerminal, onChanged, onUnauthorized }: Omit<Pr
         </ul>
       ) : null}
       {b.retryable || queued ? (
-        <div className="mt-1.5 flex flex-wrap items-center gap-2">
+        <div className="mt-2.5 flex flex-wrap items-center gap-2">
           {b.retryable ? (
             <button type="button" disabled={busy} onClick={() => run(() => api.retryBatch(s.id, b.batch_id))} className={btn}>
               Retry delivery
@@ -125,17 +140,17 @@ function Batch({ s, b, now, onOpenTerminal, onChanged, onUnauthorized }: Omit<Pr
             </button>
           ) : null}
           {b.retryable && onOpenTerminal ? (
-            <button type="button" onClick={onOpenTerminal} className="font-medium text-accent underline">
+            <button type="button" onClick={onOpenTerminal} className="btn-link text-[12.5px]">
               Check the terminal
             </button>
           ) : null}
-          {b.retryable ? <span className="text-ink-2">Retry sends it again as a new attempt; the agent may receive it twice.</span> : null}
+          {b.retryable ? <span className="text-[12px] text-ink-3">Retry sends it again as a new attempt; the agent may receive it twice.</span> : null}
         </div>
       ) : null}
-      {error ? <p className="mt-1 text-[var(--sig-block)]">{error}</p> : null}
-      <details className="mt-1">
-        <summary className="cursor-pointer text-ink-2">Exact text</summary>
-        <pre className="mt-1 whitespace-pre-wrap break-words font-mono text-[12px]">{b.text}</pre>
+      {error ? <p className="mt-1.5 text-[var(--sig-block)]">{error}</p> : null}
+      <details className="mt-1.5">
+        <summary className="cursor-pointer text-[12px] text-ink-3">Exact text</summary>
+        <pre className="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md border border-line bg-ground-2 px-2.5 py-2 font-mono text-[11.5px] text-ink-2">{b.text}</pre>
       </details>
     </li>
   );

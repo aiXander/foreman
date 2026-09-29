@@ -1,11 +1,13 @@
 // What the agent put on the card (plan §11): needs-you items (questions, blockers, offers, ships,
 // unfixed issues), decisions to review, then deliverables/notes and closed items. Every answer,
 // accept or revisit click stages into the send tray; only "Mark reviewed" acts at once (it is a
-// local review that never steers the agent). Agent text is rendered as plain text only.
+// local review that never steers the agent). Agent summaries/details go through the safe Markdown
+// subset (Markdown.tsx: text nodes only, http(s) links only); every other agent field is plain text.
 import { useState } from "react";
 import type { WorkView } from "../../shared/api";
 import { api, Unauthorized } from "../client";
 import { relTime } from "../format";
+import { InlineMarkdown, Markdown } from "./Markdown";
 import type { TrayApi } from "./Tray";
 
 type Item = WorkView["items"][number];
@@ -21,8 +23,20 @@ const kindLabel: Record<Item["body"]["kind"], string> = {
   note: "Note",
 };
 
-const btn = "rounded border border-line bg-panel-2 px-2 py-0.5 font-medium hover:border-accent disabled:opacity-50";
-const btnOn = "rounded border border-accent bg-accent px-2 py-0.5 font-medium text-accent-ink disabled:opacity-50";
+/** Which signal colour each kind's label borrows (via the lamp's data-state palette). */
+const kindTone: Record<Item["body"]["kind"], string> = {
+  question: "waiting_input",
+  blocker: "waiting_permission",
+  issue: "waiting_input",
+  offer: "starting",
+  ship: "working",
+  decision: "starting",
+  deliverable: "working",
+  note: "idle",
+};
+
+const btn = "btn btn-sm";
+const btnOn = "btn btn-sm btn-on";
 
 export function Items({ session, items, t, now, reload, onUnauthorized }: { session: string; items: Item[]; t: TrayApi; now: number; reload: () => void; onUnauthorized: () => void }) {
   const needs = items.filter((i) => i.actionable && i.body.kind !== "decision");
@@ -32,8 +46,8 @@ export function Items({ session, items, t, now, reload, onUnauthorized }: { sess
   return (
     <>
       {needs.length > 0 ? (
-        <section className="mt-5">
-          <h2 className="mb-1.5 text-[13px] font-semibold text-ink-2">{`Needs you (${needs.length})`}</h2>
+        <section className="mt-7">
+          <h2 className="eyebrow mb-2.5 !text-[var(--sig-wait)]">{`Needs you (${needs.length})`}</h2>
           <ol className="space-y-2">
             {needs.map((i) => (
               <ItemCard key={i.id} i={i} t={t} now={now} session={session} reload={reload} onUnauthorized={onUnauthorized} />
@@ -42,8 +56,8 @@ export function Items({ session, items, t, now, reload, onUnauthorized }: { sess
         </section>
       ) : null}
       {decisions.length > 0 ? (
-        <section className="mt-5">
-          <h2 className="mb-1.5 text-[13px] font-semibold text-ink-2">{`Decisions (${decisions.filter((d) => d.actionable).length} to review)`}</h2>
+        <section className="mt-7">
+          <h2 className="eyebrow mb-2.5">{`Decisions (${decisions.filter((d) => d.actionable).length} to review)`}</h2>
           <ol className="space-y-2">
             {decisions.map((i) => (
               <ItemCard key={i.id} i={i} t={t} now={now} session={session} reload={reload} onUnauthorized={onUnauthorized} />
@@ -52,8 +66,8 @@ export function Items({ session, items, t, now, reload, onUnauthorized }: { sess
         </section>
       ) : null}
       {other.length > 0 ? (
-        <section className="mt-5">
-          <h2 className="mb-1.5 text-[13px] font-semibold text-ink-2">Deliverables and notes</h2>
+        <section className="mt-7">
+          <h2 className="eyebrow mb-2.5">Deliverables and notes</h2>
           <ol className="space-y-2">
             {other.map((i) => (
               <ItemCard key={i.id} i={i} t={t} now={now} session={session} reload={reload} onUnauthorized={onUnauthorized} />
@@ -62,9 +76,9 @@ export function Items({ session, items, t, now, reload, onUnauthorized }: { sess
         </section>
       ) : null}
       {closed.length > 0 ? (
-        <details className="mt-5">
-          <summary className="cursor-pointer text-[13px] font-semibold text-ink-2">{`Closed (${closed.length})`}</summary>
-          <ol className="mt-1.5 space-y-2">
+        <details className="mt-7">
+          <summary className="eyebrow cursor-pointer">{`Closed (${closed.length})`}</summary>
+          <ol className="mt-2.5 space-y-2">
             {closed.map((i) => (
               <ItemCard key={i.id} i={i} t={t} now={now} session={session} reload={reload} onUnauthorized={onUnauthorized} />
             ))}
@@ -80,25 +94,31 @@ function ItemCard({ i, t, now, session, reload, onUnauthorized }: { i: Item; t: 
   const staged = t.staged(i.id);
   const open = !i.resolved;
   return (
-    <li className={`rounded-md border px-3 py-2 text-[13px] ${i.actionable ? "border-line bg-panel" : "border-line/60 bg-panel/60"}`} data-item={i.id}>
-      <div className="flex flex-wrap items-baseline gap-x-2">
-        <span className="text-[12px] font-semibold uppercase tracking-wide text-ink-2">{kindLabel[b.kind]}</span>
-        <span className="font-medium">{i.title}</span>
-        {i.impact === "high" ? <span className="rounded bg-warn-bg px-1 text-[11px]">high impact</span> : null}
-        {i.reversibility === "one-way" ? <span className="rounded bg-warn-bg px-1 text-[11px]">one-way</span> : null}
+    <li
+      className={`surface px-4 py-3 text-[13px] ${i.actionable ? "shadow-[inset_2px_0_0_var(--sig),0_8px_24px_-16px_rgb(0_0_0/0.8)]" : i.resolved ? "opacity-60" : ""}`}
+      data-item={i.id}
+      data-state={kindTone[b.kind]}
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="sig-text text-[10.5px] font-semibold uppercase tracking-[0.08em]">{kindLabel[b.kind]}</span>
+        <span className="font-medium text-white">{i.title}</span>
+        {i.impact === "high" ? <span className="chip h-[18px] border-[rgb(255_194_74/0.3)] bg-warn-bg px-1.5 text-[10.5px] text-[#ffe2a3]">high impact</span> : null}
+        {i.reversibility === "one-way" ? <span className="chip h-[18px] border-[rgb(255_194_74/0.3)] bg-warn-bg px-1.5 text-[10.5px] text-[#ffe2a3]">one-way</span> : null}
         <span className="flex-1" />
-        <span className="text-ink-2">{relTime(i.updated_at, now)}</span>
+        <span className="text-[12px] text-ink-3">{relTime(i.updated_at, now)}</span>
       </div>
-      <p className="mt-0.5 break-words">{i.summary}</p>
+      <p className="mt-1 break-words text-ink-2">
+        <InlineMarkdown text={i.summary} />
+      </p>
       <Body i={i} />
       {i.detail ? (
-        <details className="mt-1">
-          <summary className="cursor-pointer text-ink-2">Detail</summary>
-          <p className="mt-1 whitespace-pre-wrap break-words">{i.detail}</p>
+        <details className="mt-1.5">
+          <summary className="cursor-pointer text-[12px] text-ink-3">Detail</summary>
+          <Markdown text={i.detail} className="mt-1.5 text-ink-2" />
         </details>
       ) : null}
       {i.refs?.length ? (
-        <ul className="mt-1 space-y-0.5 font-mono text-[12px] text-ink-2">
+        <ul className="mt-1.5 space-y-0.5 font-mono text-[11.5px] text-ink-3">
           {i.refs.map((r) => (
             <li key={r} className="truncate" title={r}>
               {r}
@@ -106,7 +126,7 @@ function ItemCard({ i, t, now, session, reload, onUnauthorized }: { i: Item; t: 
           ))}
         </ul>
       ) : null}
-      {i.resolved ? <p className="mt-1 text-ink-2">{`Closed: ${i.resolved.outcome.replace("_", " ")}${i.resolved.reason ? `, ${i.resolved.reason}` : ""}.`}</p> : null}
+      {i.resolved ? <p className="mt-1.5 text-[12px] text-ink-3">{`Closed: ${i.resolved.outcome.replace("_", " ")}${i.resolved.reason ? `, ${i.resolved.reason}` : ""}.`}</p> : null}
       {open ? <Actions i={i} t={t} staged={staged} session={session} reload={reload} onUnauthorized={onUnauthorized} /> : null}
       <Receipts i={i} />
     </li>
@@ -124,7 +144,7 @@ function Body({ i }: { i: Item }) {
           : b.policy === "park"
             ? `The agent is doing other work first; it recommends "${def?.label}".`
             : `Blocking: the agent has stopped and waits for your answer (it recommends "${def?.label}").`;
-      return <p className={`mt-1 ${b.policy === "block" ? "font-medium" : "text-ink-2"}`}>{policy}</p>;
+      return <p className={`mt-1.5 text-[12.5px] ${b.policy === "block" ? "font-medium text-[#ffe2a3]" : "text-ink-3"}`}>{policy}</p>;
     }
     case "blocker":
       return (
@@ -142,8 +162,11 @@ function Body({ i }: { i: Item }) {
       return (
         <div className="mt-1">
           <p>{`${b.what}. ${b.why_now}`}</p>
-          <pre className="mt-1 overflow-x-auto rounded bg-panel-2 px-2 py-1 font-mono text-[12px]">{b.command}</pre>
-          <p className="text-[12px] text-ink-2">Foreman never runs this; acknowledge after you ran it yourself.</p>
+          <pre className="mt-1.5 overflow-x-auto rounded-md border border-line bg-ground-2 px-2.5 py-1.5 font-mono text-[12px] text-[var(--sig-work)]">
+            <span className="text-ink-3 select-none">$ </span>
+            {b.command}
+          </pre>
+          <p className="mt-1 text-[12px] text-ink-3">Foreman never runs this; acknowledge after you ran it yourself.</p>
         </div>
       );
     case "decision":
@@ -171,14 +194,14 @@ function Actions({ i, t, staged, session, reload, onUnauthorized }: { i: Item; t
   const ref = { item_id: i.id, item_revision: i.revision };
   const toggle = (on: boolean, stage: () => void) => (on && staged ? t.unstage(staged.action_id) : stage());
   const withText = (label: string, type: "answer" | "revisit") => (
-    <div className="mt-1.5 flex gap-1.5">
+    <div className="mt-2 flex gap-1.5">
       <input
         value={text}
         onChange={(e) => setText(e.target.value)}
         maxLength={2000}
         placeholder={label}
         aria-label={label}
-        className="min-w-0 flex-1 rounded border border-line bg-ground px-2 py-1"
+        className="field min-w-0 flex-1 py-1 text-[13px]"
       />
       <button
         type="button"
@@ -193,12 +216,17 @@ function Actions({ i, t, staged, session, reload, onUnauthorized }: { i: Item; t
       </button>
     </div>
   );
-  const stagedNote = staged ? <p className="mt-1 text-[12px] text-accent">{`In the send tray: ${describeStaged(staged, i)}`}</p> : null;
+  const stagedNote = staged ? (
+    <p className="mt-2 flex items-center gap-1.5 text-[12px] text-accent">
+      <span aria-hidden className="h-1.5 w-1.5 rounded-full bg-accent shadow-[0_0_8px_var(--accent)]" />
+      {`In the send tray: ${describeStaged(staged, i)}`}
+    </p>
+  ) : null;
 
   switch (b.kind) {
     case "question":
       return (
-        <div className="mt-1.5">
+        <div className="mt-2.5">
           <div className="flex flex-wrap gap-1.5">
             {b.options.map((o) => {
               const on = staged?.type === "answer" && staged.option_id === o.id && !staged.text;
@@ -232,7 +260,7 @@ function Actions({ i, t, staged, session, reload, onUnauthorized }: { i: Item; t
       const acc = staged?.type === "offer_accept";
       const dec = staged?.type === "offer_decline";
       return (
-        <div className="mt-1.5 flex gap-1.5">
+        <div className="mt-2.5 flex gap-1.5">
           <button type="button" disabled={t.busy} className={acc ? btnOn : btn} aria-pressed={acc} onClick={() => toggle(acc, () => t.stage({ type: "offer_accept", ...ref }))}>
             Accept
           </button>
@@ -245,7 +273,7 @@ function Actions({ i, t, staged, session, reload, onUnauthorized }: { i: Item; t
     case "ship": {
       const on = staged?.type === "ship_ack";
       return (
-        <div className="mt-1.5">
+        <div className="mt-2.5">
           <button type="button" disabled={t.busy} className={on ? btnOn : btn} aria-pressed={on} onClick={() => toggle(on, () => t.stage({ type: "ship_ack", ...ref }))}>
             I ran it
           </button>
@@ -263,13 +291,13 @@ function Actions({ i, t, staged, session, reload, onUnauthorized }: { i: Item; t
           .finally(() => setReviewing(false));
       };
       return (
-        <div className="mt-1.5">
+        <div className="mt-2.5">
           {i.actionable ? (
             <button type="button" disabled={reviewing} onClick={review} className={btn} title="A local review: the agent is not told.">
               Mark reviewed
             </button>
           ) : (
-            <p className="text-[12px] text-ink-2">{`Reviewed (revision ${i.reviewed_revision}).`}</p>
+            <p className="text-[12px] text-ink-3">{`Reviewed (revision ${i.reviewed_revision}).`}</p>
           )}
           {withText("Revisit: what should change?", "revisit")}
           {stagedNote}
@@ -307,14 +335,14 @@ const outcomeWords = { applied: "applied", declined: "declined", blocked: "block
 function Receipts({ i }: { i: Item }) {
   if (!i.human.length) return null;
   return (
-    <ul className="mt-1.5 space-y-0.5 border-t border-line pt-1.5 text-[12px]">
+    <ul className="mt-2.5 space-y-1 border-t border-line/70 pt-2 text-[12px] text-ink-2">
       {i.human.map((h) => {
         const opt = i.body.kind === "question" && h.option_id ? (i.body.options.find((o) => o.id === h.option_id)?.label ?? h.option_id) : h.option_id;
         const what = h.type === "answer" ? `You answered ${[opt, h.text].filter(Boolean).join(" — ")}` : h.type === "revisit" ? `You asked to revisit: ${h.text}` : h.type === "offer_accept" ? "You accepted" : h.type === "offer_decline" ? "You declined" : "You said you ran it";
         return (
-          <li key={h.action_id} className={h.outcome && h.outcome !== "applied" ? "rounded bg-warn-bg px-1.5 py-0.5" : ""}>
+          <li key={h.action_id} className={h.outcome && h.outcome !== "applied" ? "rounded-md bg-warn-bg px-2 py-1" : ""}>
             <span>{what}</span>
-            <span className="text-ink-2">{h.outcome ? ` → agent: ${outcomeWords[h.outcome]}` : " → no reply from the agent yet"}</span>
+            <span className="text-ink-3">{h.outcome ? ` → agent: ${outcomeWords[h.outcome]}` : " → no reply from the agent yet"}</span>
             {h.note ? <span className="block">{`Agent's note: ${h.note}`}</span> : null}
           </li>
         );

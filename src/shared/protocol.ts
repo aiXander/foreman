@@ -28,7 +28,8 @@ const Reversibility = z.enum(["easy", "costly", "one-way"]);
 const Phase = z.enum(["explore", "plan", "build", "verify", "docs", "handover"]);
 const QuestionPolicy = z.enum(["proceed", "park", "block"]);
 
-const target = UUID.describe("Your Foreman target from the session contract (changes after /clear or a restart).");
+// Never written by the model: on MCP calls the PreToolUse hook stamps it (hooks/stamp.ts); the CLI mirror and HTTP pass it.
+const target = UUID.describe("The session's current Foreman target (changes after /clear or a restart).");
 const requestId = UUID.describe("A fresh random UUID for this call; reuse it only to retry the identical call.");
 
 /** Fields every posted item or question carries (§8.1). */

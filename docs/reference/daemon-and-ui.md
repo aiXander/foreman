@@ -21,6 +21,7 @@ Open this when touching `src/daemon/`, `src/ui/`, the API contract, auth, or ses
 | `src/daemon/delivery-view.ts` | `SessionView.delivery` summary (queued / held / why waiting / unseen / old run) and `BatchView`s for the detail route; orphan detection. |
 | `src/cli/commands/{daemon,up,down,open,status}.ts` | Service lifecycle; `open` mints a launch link with the bearer secret. |
 | `src/ui/` | React 19 + Vite + Tailwind 4 SPA (hash routes). `live.ts` = snapshot + SSE; `components/TerminalPane.tsx` = xterm over the WS. Card sections: `Work.tsx` (brief/progress/handover), `Items.tsx` (needs-you, decisions, receipts), `Tray.tsx` (`useTray` staging + Send), `Controls.tsx` (Pause/Stop), `Deliveries.tsx` (sent batches). |
+| `src/ui/styles.css` | The look: dark-only tokens (`--ground/panel/ink/line/accent`, `--sig-*` state colours) mapped into Tailwind, plus shared classes — `.btn` (`-sm`/`-primary`/`-on` = staged choice/`-link`), `.field`, `.surface`, `.chip`, `.eyebrow` (section label), `.seg`, `.kbd`, `.enter` (mount fade). Any element with `data-state="<ActivityState>"` sets `--sig`, which `.lamp`, `.strip` (state-tinted card), `.tile` and `.sig-text` read; batch statuses and item kinds borrow it through small tone maps. Reuse these instead of one-off utility stacks. |
 
 ## Behaviour worth knowing before changing it
 
@@ -38,6 +39,10 @@ Open this when touching `src/daemon/`, `src/ui/`, the API contract, auth, or ses
 - **Terminal WS:** the daemon buffers ptyd pushes until the attach reply so `hello` (with
   `last_seq`) always arrives first — the UI suppresses query replies for output ≤ that seq.
   Frames per viewer are serialized; a browser with > 1 MiB buffered is closed (4000) to resync.
+- **Browser writer lease = keyboard focus** (`TerminalPane.tsx`): no control buttons. Focusing the
+  xterm sends `takeover` (input typed before the `control` reply is still sent — the per-viewer frame
+  chain orders it after the takeover); blur releases after 200 ms. Opening the terminal view focuses
+  it. So a background tab or the card view never holds the lease and never blocks idle delivery.
 - **Launcher:** argv built server-side (never shell) via `managedClaudeArgv` (plugin dir unless
   user-installed, `--allowedTools=` for the Foreman tools — see [protocol.md](protocol.md)); model/effort validated against the
   installed CLI (`--help` only quotes *example* aliases, so a known alias set is merged in).
@@ -89,8 +94,13 @@ projection; all are cookie + exact-Origin (or bearer) like other mutations.
 - **Card order:** status + Pause/Stop → brief/progress (bar, ETA, confidence, now, checklist, quiet
   after 20 min) → needs-you items → decisions (Mark reviewed, Revisit) → deliverables/notes → closed →
   handover; right column: send tray → sent batches (Retry / Move to current run / Cancel, per-action
-  receipts with declined/blocked notes, terminal link) → activity. Agent text is plain text only
-  (no Markdown rendering yet).
+  receipts with declined/blocked notes, terminal link) → activity.
+- **Agent Markdown (plan §16):** the handover summary and item details render through a small subset
+  (`src/ui/markdown.ts` → `components/Markdown.tsx`: paragraphs, headings, lists, fenced code,
+  inline code/bold/italic, links); item summaries get the inline part only. It parses to data rendered as
+  React text nodes — no HTML path exists, raw HTML stays literal, and only absolute http(s) targets
+  become links (new tab, `noopener noreferrer`); anything else shows as `label (target)` text. Every
+  other agent field is plain text. Tests: `test/markdown.test.ts`; checked in headless Chrome.
 
 ## Verifying the UI
 

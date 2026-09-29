@@ -1,10 +1,12 @@
 // The short mandatory contract SessionStart injects as additionalContext (plan §6.3/§8.3). It is
-// re-injected on every startup, resume, clear and compact, because it carries the run's `target`.
+// re-injected on every startup, resume, clear and compact, because /clear and compaction drop it.
+// It carries no target: the PreToolUse hook stamps that onto every Foreman call (hooks/stamp.ts).
 // A plugin skill is only discoverable, so the rules that must never be missed live here too; the
 // skill (plugin/skills/foreman) holds the full protocol and the schema reference.
 import { qualifiedTool, TOOLS } from "./protocol";
 
 export interface ContractInput {
+  /** target/source no longer shape the text (the hook stamps the target per call); drop them with their callers. */
   target: string;
   mode: "managed" | "observed";
   source: string;
@@ -22,16 +24,10 @@ export function buildContract(c: ContractInput): string {
     c.mode === "managed"
       ? "This is a Foreman-managed terminal: the handover card is your only end-of-task summary. Do not also write a summary or handover recap in the terminal."
       : "This session runs in the human's own terminal: finish with your normal terminal summary AND call foreman_handover so the card has the review package.";
-  const why =
-    c.source === "compact"
-      ? "Context was compacted; your target is unchanged."
-      : c.source === "startup"
-        ? ""
-        : "This is a new run of the conversation: use this target from now on, not any earlier one.";
   return [
     "# Foreman contract (mandatory)",
     "The human supervises this session through Foreman, a local dashboard that shows your brief, progress, questions and handover as a card and lets them steer you.",
-    `Your Foreman target: ${c.target} — pass it as \`target\` on every Foreman tool call. Never hand it to subagents. ${why}`.trim(),
+    "Foreman identifies this session on every Foreman tool call by itself: there is no id for you to pass. Foreman tools work for you only, never inside subagents.",
     `Before your first Foreman call, load the tools with ToolSearch query "select:${select}", and load the skill foreman:foreman (Skill tool) for the full protocol and schemas. Mutating calls need a fresh random UUID as request_id.`,
     "",
     "Always:",

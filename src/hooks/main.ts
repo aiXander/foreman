@@ -1,7 +1,8 @@
 // Claude Code hook entrypoint: `hook.js <EventName>` with the hook JSON on stdin.
 // Contract: ALWAYS exit 0 and never block Claude. The only model-visible output is deliberate
 // protocol context: SessionStart's Foreman contract and human batch delivery (PostToolUse,
-// PostToolUseFailure, Stop — claimed in the journal before it is printed). SessionStart/
+// PostToolUseFailure, Stop — claimed in the journal before it is printed). PreToolUse on a
+// Foreman tool also stamps the caller's target onto the call (stamp.ts). SessionStart/
 // SessionEnd maintain identity; every other event is passive telemetry that is dropped (and
 // logged) rather than waited on. Only names, paths and counts are stored — a prompt is read for
 // batch markers and never kept.
@@ -15,6 +16,7 @@ import { contractPeers, PEER_BUDGET_MS, readPeers } from "../shared/peers";
 import { registerSessionEnd, registerSessionStart } from "../shared/registration";
 import { appendSessionEvents, lookupNative, readManifest } from "../shared/store";
 import { HANDLED_TOOLS } from "../shared/tools";
+import { stampTarget } from "./stamp";
 
 const MAX_STDIN = 1024 * 1024;
 const LOG_ROTATE_BYTES = 1024 * 1024;
@@ -127,6 +129,16 @@ function startPeers(session: string, input: any): string | null {
   }
 }
 
+/** Foreman tools only: print the caller's stamped target, or a refusal (stamp.ts). */
+function stamp(input: any): void {
+  try {
+    const out = stampTarget(input);
+    if (out) process.stdout.write(JSON.stringify(out) + "\n");
+  } catch (e: any) {
+    log("PreToolUse", `stamp failed: ${e?.message ?? e}`); // no target → the sidecar refuses the call
+  }
+}
+
 async function main(): Promise<void> {
   const event = process.argv[2] ?? "";
   let input: any;
@@ -144,7 +156,7 @@ async function main(): Promise<void> {
   if (event === "SessionStart") {
     try {
       const reg = registerSessionStart(input);
-      // The one deliberate behaviour change: the protocol contract with this run's target (§6.3).
+      // The one deliberate behaviour change: the protocol contract (§6.3); no target — stamp.ts adds it per call.
       const additionalContext = buildContract({ target: reg.target, mode: reg.mode, source: reg.source, tools: [...HANDLED_TOOLS], peers: startPeers(reg.session, input) });
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } }) + "\n");
     } catch (e: any) {
@@ -154,6 +166,7 @@ async function main(): Promise<void> {
     }
     return;
   }
+  if (event === "PreToolUse") stamp(input);
   try {
     if (event === "SessionEnd") registerSessionEnd(input);
     else await activity(event, input);

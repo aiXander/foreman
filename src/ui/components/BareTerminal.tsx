@@ -8,20 +8,25 @@ import { TerminalPane } from "./TerminalPane";
 export function BareTerminal({ terminalId, terminal, session }: { terminalId: string; terminal?: TerminalInfo; session?: SessionView }) {
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line px-5 py-3">
-        <h1 className="text-[16px] font-semibold tracking-tight">{session ? sessionTitle(session) : "New terminal"}</h1>
-        {terminal ? (
-          <span className="truncate font-mono text-[12.5px] text-ink-2" title={terminal.cwd}>
-            {basename(terminal.cwd)}
-          </span>
-        ) : null}
+      <header className="flex flex-wrap items-center gap-x-3 gap-y-1 border-b border-line bg-ground-2/60 px-6 py-3 backdrop-blur-xl">
+        <div className="min-w-0">
+          {terminal ? (
+            <p className="truncate font-mono text-[11px] text-ink-3" title={terminal.cwd}>
+              {basename(terminal.cwd)}
+            </p>
+          ) : null}
+          <h1 className="truncate text-[17px] leading-tight font-semibold tracking-tight text-white">{session ? sessionTitle(session) : "New terminal"}</h1>
+        </div>
         <span className="flex-1" />
         {session ? (
-          <a href={href({ name: "session", id: session.id })} className="rounded-md bg-accent px-2.5 py-1 text-[13px] font-medium text-accent-ink">
+          <a href={href({ name: "session", id: session.id })} className="btn btn-primary">
             Open session card
           </a>
         ) : (
-          <span className="text-[12px] text-ink-2">Waiting for Claude to register the session</span>
+          <span className="flex items-center gap-2 text-[12px] text-ink-3">
+            <span className="lamp" data-state="starting" />
+            Waiting for Claude to register the session
+          </span>
         )}
       </header>
       <div className="min-h-0 flex-1">

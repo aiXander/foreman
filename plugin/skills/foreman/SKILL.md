@@ -7,7 +7,7 @@ description: Foreman supervision protocol — brief, progress, items, questions,
 
 The human runs many Claude sessions at once and supervises them through Foreman, a local dashboard. Each session is a **card**: your brief, a progress bar, the items that need them, and your handover. They read cards instead of terminals, answer by clicking, and press **Send**; what they send reaches you as a **batch**. Your job on the protocol side is to keep your card true and cheap to read, so one human can steer many sessions.
 
-Your **target** is in the Foreman contract injected at session start. Pass it on every call. It changes after `/clear`, `/resume` or a restart (a fresh contract gives the new one); after compaction it stays. Keep it to yourself: subagents never get it.
+Foreman identifies your session on every call by itself (a hook stamps it on), so there is no id to pass and nothing to update after `/clear` or `/resume`. The tools work only for you, the main agent: a subagent's Foreman call is refused, so keep Foreman work out of subagent prompts.
 
 Tools are deferred: load them once with the `ToolSearch` select line from the contract. Every mutating call takes `request_id`, a fresh random UUID you generate per call; reuse one only to retry the exact same call after an error such as `STORAGE_UNAVAILABLE` (the retry then returns the original result instead of writing twice). Full schemas, limits and error codes: [reference.md](reference.md).
 
@@ -98,7 +98,7 @@ Where the summary goes depends on the session mode, stated in your contract:
 | `VALIDATION` | Fix the named `field` and call again with a new `request_id`. |
 | `CONFLICT` | Stale revision, existing id, or a `request_id` reused for a different call: re-read and retry with a fresh `request_id`. |
 | `LIMIT` | Too many open questions/decisions/items: resolve some, or post as a note. |
-| `STALE_TARGET` / `NOT_REGISTERED` | Your target is old or not yours: use the one in your latest contract. |
+| `STALE_TARGET` / `NOT_REGISTERED` | Foreman lost track of this session (e.g. it ended, or the plugin's hook isn't running): carry on without Foreman tools and say so in the terminal. |
 | `STORAGE_UNAVAILABLE` | Retry the identical call (same `request_id`) once; if it still fails, tell the human in the terminal. |
 
 Never report that a card, question or handover exists if the call did not succeed.
@@ -109,7 +109,6 @@ Brief at the start of a task:
 
 ```json
 {
-  "target": "<your target>",
   "request_id": "<fresh uuid>",
   "goal": "Add CSV export to the reports page",
   "done_when": "Users can download any report as CSV and the export test passes",
@@ -125,7 +124,6 @@ A parked question:
 
 ```json
 {
-  "target": "<your target>",
   "request_id": "<fresh uuid>",
   "id": "csv-encoding",
   "expected_revision": 0,

@@ -44,10 +44,16 @@ test("sidecar lists object-typed tool schemas and acts only for its own terminal
   const [list, ok, bad] = await rpc({ FOREMAN_TERMINAL_ID: term }, [{ method: "tools/list" }, brief(reg.target), { method: "tools/call", params: { name: "foreman_brief", arguments: { target: reg.target } } }]);
   const tools = list.result.tools;
   expect(tools.map((t: any) => t.name)).toContain("foreman_inbox");
-  for (const t of tools) expect(t.inputSchema).toMatchObject({ type: "object", additionalProperties: false, required: expect.arrayContaining(["target"]) });
+  for (const t of tools) {
+    expect(t.inputSchema).toMatchObject({ type: "object", additionalProperties: false });
+    expect(t.inputSchema.properties.target).toBeUndefined(); // the PreToolUse hook stamps it
+    expect(t.inputSchema.required ?? []).not.toContain("target");
+  }
   expect(ok.result).toMatchObject({ isError: false, structuredContent: { ok: true, result: { brief: "set" } } });
   expect(bad.result).toMatchObject({ isError: true, structuredContent: { ok: false, code: "VALIDATION" } });
 
-  const [foreign] = await rpc({ FOREMAN_TERMINAL_ID: crypto.randomUUID() }, [brief(reg.target)]);
+  const [foreign, unstamped] = await rpc({ FOREMAN_TERMINAL_ID: crypto.randomUUID() }, [brief(reg.target), { method: "tools/call", params: { name: "foreman_brief", arguments: { request_id: crypto.randomUUID(), goal: "g", done_when: "d" } } }]);
   expect(foreign.result).toMatchObject({ isError: true, structuredContent: { code: "STALE_TARGET" } });
+  // No hook stamp (hook missing): fail closed, never guess the session.
+  expect(unstamped.result).toMatchObject({ isError: true, structuredContent: { code: "NOT_REGISTERED", field: "target" } });
 }, 20_000);

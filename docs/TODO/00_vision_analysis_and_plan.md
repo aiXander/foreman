@@ -4,10 +4,10 @@
 > verdict table in §18.1. The product decisions in §19 remain authoritative; unbuilt contracts below
 > are still the spec.
 >
-> **Phase 2 in progress.** Built: the agent protocol (§8 — contract, MCP sidecar, skill), the
-> batch/claim queue on the journal, hook delivery + daemon idle worker + delivery status/Retry
-> (§9.2/§9.3; live exit evidence passed 6/6), the send tray + Send/Pause/Stop + retarget/cancel and
-> the phase-2 card (§9.1/§11). **Next:** peers (§10).
+> **Phase 2 done (2026-09-28).** Built: the agent protocol (§8), the batch/claim queue, hook delivery +
+> idle worker + Retry (§9.2/§9.3; delivery evidence 6/6), tray + Send/Pause/Stop + retarget/cancel and
+> the card (§9.1/§11), safe Markdown (§16) and per-project peers (§10). Exit evidence 12/12 live
+> (`scripts/phase2-exit-demo.ts`). **Next:** phase 3 (inbox + attention).
 >
 > **Open product choice (§19.1):** separate human Board. Pause/Stop and observed summaries were
 > decided 2026-09-28 (§19, D18/D19).
@@ -146,8 +146,10 @@ compaction keeping the run, `/clear`/`/resume` rebinding (old run ended by Sessi
 registry matching by exact session ID + PID/start time, daemon `bind` CAS of target onto terminal,
 subagents as telemetry only. Done — see [reference/storage-and-identity.md](../reference/storage-and-identity.md).
 
-Target injection + explicit `target` on every tool (validated current, sidecar bound to its
-terminal): done — see [reference/protocol.md](../reference/protocol.md).
+Target on every tool call, stamped by the PreToolUse hook from Claude's own `session_id` (the model
+never sees or passes it; subagents are refused; validated current, sidecar bound to its terminal):
+done — see [reference/protocol.md](../reference/protocol.md). The only session ids a model passes are
+peer addresses.
 
 Retarget/cancel of batches sent to an earlier run (cancel + re-created batch on the current run in one
 transaction, re-validated against current item revisions, joins the back of the queue; Pause = cancel
@@ -160,12 +162,11 @@ managed launches unless a user-scoped install exists; passive activity → state
 waiting_permission / waiting_input / finishing / idle / dead / unknown); names/paths/counts only.
 Done — see [reference/plugin-hooks.md](../reference/plugin-hooks.md).
 
-MCP config, the `foreman:foreman` skill, the SessionStart contract (tools named for ToolSearch)
-and `--allowedTools=` on managed launches: done — see [reference/protocol.md](../reference/protocol.md).
+MCP config, the `foreman:foreman` skill, the SessionStart contract (tools named for ToolSearch),
+and the PreToolUse target stamp, which also pre-approves the Foreman tools in managed and observed
+sessions alike (no user permission rule needed): done — see [reference/protocol.md](../reference/protocol.md).
 
 **Open:**
-- Peers in the injected contract (§10).
-- Observed sessions need a user permission rule for the Foreman tools (writes `~/.claude/` — ask Xander).
 - Dogfood: a user-scoped install for observed sessions (`.claude-plugin/marketplace.json` exists;
   installing writes `~/.claude/`, so ask Xander). Don't replace user hooks/settings or install twice.
 - Not yet observed with real payloads: PermissionRequest, Notification, StopFailure, Subagent*.
@@ -190,8 +191,8 @@ with `Ctrl-] d` detach, card/terminal switch in the UI. Done — see [reference/
 
 ## 8. MCP protocol and agent contract
 
-Built: the §8.1 validation conventions, all core tools except `foreman_peers` (brief, progress,
-post, ask, resolve, handover, inbox with acks), the §8.2 limits under the journal lock, the §8.3
+Built: the §8.1 validation conventions, all core tools (brief, progress, post, ask, resolve,
+handover, inbox with acks, peers), the §8.2 limits under the journal lock, the §8.3
 lifecycle rules, the `foreman:foreman` skill with a generated schema reference, and the mode-specific
 contract (managed = card only; observed = terminal summary + card, D19). Done — see
 [reference/protocol.md](../reference/protocol.md).
@@ -201,9 +202,7 @@ in a nested `body` discriminated union (MCP input schemas must be objects at the
 keep the plan's `foreman_*` names; agent-made ids validate as any 8-4-4-4-12 hex.
 
 **Open:**
-- `foreman_peers` (§10).
 - `foreman_inbox.human_last_viewed_at` returns null until human read receipts exist (§11).
-- Safe Markdown rendering of agent fields (§16); the card renders plain text today.
 
 ## 9. Send tray → delivery → acknowledgement
 
@@ -221,8 +220,8 @@ Done — see [reference/daemon-and-ui.md](../reference/daemon-and-ui.md) and
 Action union (unchanged, `BatchAction` in `protocol.ts`): `answer{item_id,item_revision,option_id?,text?}`,
 `revisit`, `offer_accept|offer_decline`, `note`, `ship_ack`, plus `pause` (never staged).
 
-**Open:** keyboard shortcuts (`s` Send, `1`–`4` answer, §11); a live Stop check against real Claude
-(only the fake TUI has been interrupted by the product op; the ESC facts come from phase-0 gate 6).
+**Open:** keyboard shortcuts (`s` Send, `1`–`4` answer, §11). Live Stop check against real Claude done: a real haiku turn stopped 204 ms after the Stop route, process and conversation kept, no draft
+(`scripts/phase2-exit-demo.ts` part 4).
 
 ### 9.2 Route and ownership
 
@@ -290,26 +289,14 @@ foremand; idle PTY delivery waits for its worker to return.
 
 ## 10. Per-project peers
 
-Build peers from registered sessions' latest brief/progress plus validated native registry rows.
-Exclude self, dead runs, subagent telemetry and other projects. Registry-only peers may appear
-with name/state and no declared goal. Validate current PID/process-start where possible; show
-unknown/stale explicitly and never reuse a cached name as a guaranteed address.
+Built: one reader for the SessionStart contract block (≤ 5 peers, ≤ 1,200 chars) and the read-only
+`foreman_peers` tool: same-project live sessions from journals (goal/now/progress) plus registry-only
+rows, names only from a verified-live registry row, unknown/stale shown as such, a 100 ms / 1 s
+budget with an `unread` count. Messaging stays Claude's native `ListAgents` + `SendMessage` (no
+Foreman send tool, no inbound-permission changes). Decided: no daemon cache — hooks/MCP always
+read files directly. Done — see [reference/protocol.md](../reference/protocol.md).
 
-A shared reader builds the same snapshot for hooks, MCP and daemon. No model summarization.
-SessionStart injects at most 5 peers and 1,200 characters total; each shows name (or unavailable),
-goal, now and state, with a truncation count and instruction to call `foreman_peers` for more.
-Sort active known peers first, then session UUID. The daemon refreshes its disposable cache on
-relevant events and registry changes (poll at 2 s if watching is unreliable). When down, hooks/MCP
-read journals/registry directly with a 100 ms budget and omit unavailable data instead of blocking.
-
-The [native tools](https://code.claude.com/docs/en/tools-reference) perform discovery and sending
-(proven in phase 0: an inbound message wakes an idle peer as a new turn wrapped in
-`<cross-session-message from-name="…">`; `--name` sets the address; both tools may need permission).
-If a name is ambiguous/changed, use the native listing's exact address; if messaging is unavailable,
-report that capability honestly. Do not change inbound permissions, call private sockets, start
-helper sessions to relay human input, or add a Foreman send tool. Native messaging may wake an
-idle peer; that does not change D10's restriction on **Foreman human steering** of observed sessions.
-A read-only communications feed is deferred.
+**Open:** a read-only communications feed and peers on the human's card (not needed for phase 2).
 
 ## 11. Core UI and attention
 
@@ -377,8 +364,8 @@ remove only owned entries. No telemetry or hosted service. No Codex config edits
 
 Shipped: loopback bind, Host allowlist, exact Origin, bearer + signed SameSite=Strict cookie via
 one-use launch token, owner-only socket, server-side validation, CSP, text-only rendering. Done — see
-[reference/daemon-and-ui.md](../reference/daemon-and-ui.md). **Open:** safe Markdown rendering for agent
-fields (phase 2), realpath-checked project links, filesystem peer-credential checks on the ptyd socket.
+[reference/daemon-and-ui.md](../reference/daemon-and-ui.md). Safe Markdown for agent fields: done — see [reference/daemon-and-ui.md](../reference/daemon-and-ui.md).
+**Open:** realpath-checked project links, filesystem peer-credential checks on the ptyd socket.
 
 - Bind to `127.0.0.1`; one configured origin, Host allowlist, no permissive CORS. Protect REST,
   SSE and terminal WS. Browser mutations/WS require exact Origin and authenticated HttpOnly,
@@ -421,7 +408,7 @@ the phase-2 estimate: its new work (lead-line framing, MCP permission wiring) is
 |---|---|---|---|
 | **0 · Integration spike** | **Done 2026-09-28.** Every gate passed — §18.1. Terminal restore/multi-viewer were proven in phase 1. Not run: c11 wrapper coexistence (ptyd scrubs `C11_*` and skips the wrapper). | §18.1 | — |
 | **1 · Host + see** | **Done 2026-09-27.** `scripts/phase1-demo.ts` (real Claude, 7/7): five managed agents register via hooks, are bound, survive a daemon restart with the same PIDs and a browser WS reconnect (replay, no snapshot); two viewers agree after resize and delta replay. Tests (38): slow viewer dropped without stalling the child; PID reuse / stale registry not live; hostile Origin/Host/cookie rejected. UI checked in headless Chrome (render, take control, type). | — |
-| **2 · Protocol + steering + peers** | In progress. Done: MCP schemas, skill, contract, progress/items/questions/handover storage, batch queue + receipts (inbox acks), delivery routes (hooks + idle worker) + Retry, tray/Send/Pause/Stop + retarget/cancel, card UI (checked in headless Chrome with a fake TUI). Delivery exit evidence 6/6 (`scripts/phase2-delivery-demo.ts`). Open: peers; the real-task exit evidence below. | Real task: answer blocking question, override assumed answer, revisit decision, accept offer; agent records outcomes. Daemon-off hooks still work; no duplicate delivery claims; uncertain send stays uncertain. Native peer message demo in explicitly created test sessions. The Stop hook allows a turn to finish with no queued input instead of looping. | 5–6 d |
+| **2 · Protocol + steering + peers** | **Done 2026-09-28.** Done: MCP schemas, skill, contract, storage, batch queue + receipts, delivery routes + Retry, tray/Send/Pause/Stop + retarget/cancel, card UI, safe Markdown, peers. Delivery evidence 6/6 (`scripts/phase2-delivery-demo.ts`; covers "Stop hook doesn't loop"). Exit evidence **12/12** live (`scripts/phase2-exit-demo.ts`, haiku, 2.5 min): real task loop (blocking answer, assumed-answer override, decision revised, offer accepted, all acked, handover), uncertain holds until Retry, daemon-off MCP + PostToolUse delivery, live Stop, peers via contract/`foreman_peers` + native SendMessage, 0 duplicate claims. | Real task: answer blocking question, override assumed answer, revisit decision, accept offer; agent records outcomes. Daemon-off hooks still work; no duplicate delivery claims; uncertain send stays uncertain. Native peer message demo in explicitly created test sessions. The Stop hook allows a turn to finish with no queued input instead of looping. | 5–6 d |
 | **3 · Inbox + attention** | Cross-session ranked inbox, read receipts, since-away view and bounded notifications. | After 2 h away, show unseen revisions plus unresolved work, rank deterministically, retain drafts/receipts across rebuild, notify only eligible items. Resolve Q1 (Board) before its dependent UI is declared complete. | 2–3 d |
 
 ### 18.1 Phase-0 verdicts

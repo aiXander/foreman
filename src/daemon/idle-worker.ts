@@ -94,7 +94,7 @@ export class IdleWorker {
         return;
       }
       const st = await this.ptyd.inputState(tid);
-      if (st.writer) return (backoff(), this.setReason(s.session, "someone holds terminal control; release it to deliver"));
+      if (st.writer) return (backoff(), this.setReason(s.session, "the terminal has keyboard control (focused in the browser, or `foreman attach`); delivery waits until it lets go"));
       if (!st.ready || st.target !== target) return (backoff(), this.setReason(s.session, st.ready ? "terminal is being rerouted" : (st.reason ?? "input not ready")));
       this.setReason(s.session, null);
       const claim = claimNext(s.session, "idle_submit", { expectRun: run, lockTimeoutMs: LOCK_TIMEOUT.mutation });

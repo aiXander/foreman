@@ -32,7 +32,9 @@ send trays (`tray.set`, written by the daemon; see [daemon-and-ui.md](daemon-and
 
 - **Session** = one Claude conversation (native `session_id`); Foreman mints its own UUID.
 - **Run** = one incarnation. Every non-`compact` SessionStart starts a new run with a new
-  `target` UUID (the future MCP routing handle); `compact` keeps run + target and logs `run.compacted`.
+  `target` UUID (the routing handle for MCP tool calls and ptyd `bind`; the model never sees it — the
+  PreToolUse hook stamps it onto Foreman calls, see [protocol.md](protocol.md)); `compact` keeps run +
+  target and logs `run.compacted`.
   A still-open previous run is ended first (`reason: "superseded"`) — two live runs never merge.
 - **Managed** iff the hook sees `FOREMAN_TERMINAL_ID` in its env (set by ptyd). SessionEnd ends
   the run once (1 s lock budget: Claude gives all SessionEnd hooks 1.5 s). In-TUI `/clear` and
