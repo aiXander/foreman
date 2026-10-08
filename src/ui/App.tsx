@@ -10,6 +10,7 @@ import { type Live, useLive } from "./live";
 import { navigate, useRoute } from "./route";
 
 const VIEW_KEY = "foreman.viewMode";
+const SIDEBAR_KEY = "foreman.sidebar";
 
 function loadViewMode(): ViewMode {
   try {
@@ -39,6 +40,21 @@ export function App() {
     } catch {}
   }, []);
   const onUnauthorized = useCallback(() => setForcedSignOut(true), []);
+  const [collapsed, setCollapsed] = useState(() => {
+    try {
+      return localStorage.getItem(SIDEBAR_KEY) === "collapsed";
+    } catch {
+      return false;
+    }
+  });
+  const toggleSidebar = useCallback(() => {
+    setCollapsed((c) => {
+      try {
+        localStorage.setItem(SIDEBAR_KEY, c ? "open" : "collapsed");
+      } catch {}
+      return !c;
+    });
+  }, []);
 
   const openTerminal = useCallback(
     (id: string) => {
@@ -54,6 +70,9 @@ export function App() {
       if (e.key === "`") {
         e.preventDefault();
         setViewMode(viewMode === "visual" ? "terminal" : "visual");
+      } else if (e.key === "[") {
+        e.preventDefault();
+        toggleSidebar();
       } else if (e.key === "t" && route.name === "session") {
         e.preventDefault();
         setViewMode("terminal");
@@ -61,7 +80,7 @@ export function App() {
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [viewMode, route, setViewMode]);
+  }, [viewMode, route, setViewMode, toggleSidebar]);
 
   if (live.status === "unauthorized" || forcedSignOut) return <SignedOut />;
 
@@ -79,7 +98,7 @@ export function App() {
     const session = live.sessions.find((s) => s.terminal_id === route.id);
     main = <BareTerminal key={route.id} terminalId={route.id} terminal={live.terminals.find((t) => t.terminal_id === route.id)} session={session} />;
   } else if (route.name === "page") {
-    main = <PinRoute live={live} pinId={route.id} setViewMode={setViewMode} onUnauthorized={onUnauthorized} />;
+    main = <PinRoute live={live} pinId={route.id} setViewMode={setViewMode} onOpenTerminal={openTerminal} onUnauthorized={onUnauthorized} />;
   } else if (route.name === "session") {
     const s = live.sessions.find((x) => x.id === route.id);
     main = s ? (
@@ -98,7 +117,7 @@ export function App() {
 
   return (
     <div className="flex h-full">
-      <Sidebar sessions={live.sessions} pins={live.pins} route={route} />
+      <Sidebar sessions={live.sessions} pins={live.pins} route={route} collapsed={collapsed} onToggle={toggleSidebar} />
       <main className="flex min-w-0 flex-1 flex-col">
         {live.status === "offline" ? (
           <div className="flex items-center gap-2.5 border-b border-[rgb(255_194_74/0.25)] bg-warn-bg px-5 py-2 text-[13px] text-[#ffe2a3]">
@@ -124,7 +143,7 @@ function pageMount(live: Live, s: SessionView): SessionPageMount | null {
   };
 }
 
-function PinRoute({ live, pinId, setViewMode, onUnauthorized }: { live: Live; pinId: string; setViewMode: (m: ViewMode) => void; onUnauthorized: () => void }) {
+function PinRoute({ live, pinId, setViewMode, onOpenTerminal, onUnauthorized }: { live: Live; pinId: string; setViewMode: (m: ViewMode) => void; onOpenTerminal: (id: string) => void; onUnauthorized: () => void }) {
   const pin = live.pins.find((p) => p.pin_id === pinId);
   if (!pin) {
     return (
@@ -141,7 +160,7 @@ function PinRoute({ live, pinId, setViewMode, onUnauthorized }: { live: Live; pi
     navigate({ name: "session", id });
   };
   const agent = live.sessions.find((x) => x.id === pin.session) ?? null;
-  return <PinPage key={pin.pin_id} pin={pin} agent={agent} rev={live.pageRev[pin.pin_id] ?? 0} onOpenSession={openSession} onUnauthorized={onUnauthorized} />;
+  return <PinPage key={pin.pin_id} pin={pin} agent={agent} rev={live.pageRev[pin.pin_id] ?? 0} onOpenSession={openSession} onOpenTerminal={onOpenTerminal} onUnauthorized={onUnauthorized} />;
 }
 
 function SignedOut() {

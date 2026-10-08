@@ -9,19 +9,22 @@
 > the card (§9.1/§11), safe Markdown (§16) and per-project peers (§10). Exit evidence 12/12 live
 > (`scripts/phase2-exit-demo.ts`). **Phase 3 pages** ([01_pages.md](01_pages.md)): P1 done 2026-10-08 (a
 > session shows a plain HTML page; clicks reach the agent as tells; pins) and P1b done the same day (the
-> page saves its own declared data files; the agent reasons over what the human tells it). **Next:** P2
-> the CRM, then phase 4 (inbox + attention).
+> page saves its own declared data files; the agent reasons over what the human tells it). **Direction
+> grilled 2026-10-08 (D21–D24):** card (common) + page (custom) are one HTML surface; HTML replaces
+> terminal text. **Built:** the CRM trial (P2 + Fresh agent + page-edit diff on delivery). **Next:** its live
+> exit check with Xander, then rich card output, then phase 4 (inbox + attention), then the full switch from c11.
 >
 > **Open product choice (§19.1):** separate human Board. Pause/Stop and observed summaries were
 > decided 2026-09-28 (§19, D18/D19).
 >
-> **Build:** ~~hosted terminals~~ → ~~protocol/steering/peers~~ → pages → global inbox → one-week dogfood
-> checkpoint. Workspace, macros, launch-next and Codex wait until after that checkpoint.
+> **Build:** ~~hosted terminals~~ → ~~protocol/steering/peers~~ → CRM trial → rich card output → global
+> inbox → one-week dogfood checkpoint (= the c11 switch). Workspace, macros, launch-next and Codex wait until after that checkpoint.
 
 ## 0. Product and scope
 
-Foreman is a local Bun daemon + React browser app that hosts real **Claude Code** terminals.
-Agents push progress, questions, decisions and handovers through MCP. The human reads cards and
+Foreman is a local Bun daemon + React browser app that hosts real **Claude Code** terminals. Its end
+goal (D21): HTML replaces terminal text as the human ↔ agent interface — a common **card** per session plus
+an optional agent-built **page** per project. Agents push progress, questions, decisions and handovers through MCP. The human reads cards and
 an inbox, answers by clicking, then presses **Send** for that session. One click opens its terminal.
 The point is reducing supervision effort, not replacing Claude's TUI.
 
@@ -29,7 +32,7 @@ The point is reducing supervision effort, not replacing Claude's TUI.
 manual send trays, reliable delivery accounting, card handovers, per-project peers and a global
 human inbox. A minimal launcher belongs in phase 1; handover-to-next-agent automation does not.
 
-**Excluded:** collision warnings, Foreman agent-to-agent messaging, send timers, question
+**Excluded:** phone / remote access (later want, D24), collision warnings, Foreman agent-to-agent messaging, send timers, question
 countdowns, channels, Codex support, headless jobs, terminal-host adapters and a desktop shell.
 No tmux or Tauri work is scheduled. Native permission prompts stay in the real terminal.
 
@@ -348,7 +351,8 @@ Replaced on 2026-10-08 (D20): no component catalog or panel schema. A session ca
 page** from its folder, served on a separate origin and reloaded when files change. Two channels
 (revised 2026-10-08): the page saves direct edits to data files the agent declared writable (whole-file
 PUT with a version check), and the human talks to the agent through tells, which it reasons over; the
-agent alone changes the page's code. Plan: [01_pages.md](01_pages.md).
+agent alone changes the page's code. The card (§11) and the page are one surface in two layers (D21);
+the agent sees direct edits as a diff on its next delivery (D22). Plan: [01_pages.md](01_pages.md).
 
 ## 14. Macros, launch-next and style — deferred
 
@@ -413,7 +417,7 @@ the phase-2 estimate: its new work (lead-line framing, MCP permission wiring) is
 | **0 · Integration spike** | **Done 2026-09-28.** Every gate passed — §18.1. Terminal restore/multi-viewer were proven in phase 1. Not run: c11 wrapper coexistence (ptyd scrubs `C11_*` and skips the wrapper). | §18.1 | — |
 | **1 · Host + see** | **Done 2026-09-27.** `scripts/phase1-demo.ts` (real Claude, 7/7): five managed agents register via hooks, are bound, survive a daemon restart with the same PIDs and a browser WS reconnect (replay, no snapshot); two viewers agree after resize and delta replay. Tests (38): slow viewer dropped without stalling the child; PID reuse / stale registry not live; hostile Origin/Host/cookie rejected. UI checked in headless Chrome (render, take control, type). | — |
 | **2 · Protocol + steering + peers** | **Done 2026-09-28.** Done: MCP schemas, skill, contract, storage, batch queue + receipts, delivery routes + Retry, tray/Send/Pause/Stop + retarget/cancel, card UI, safe Markdown, peers. Delivery evidence 6/6 (`scripts/phase2-delivery-demo.ts`; covers "Stop hook doesn't loop"). Exit evidence **12/12** live (`scripts/phase2-exit-demo.ts`, haiku, 2.5 min): real task loop (blocking answer, assumed-answer override, decision revised, offer accepted, all acked, handover), uncertain holds until Retry, daemon-off MCP + PostToolUse delivery, live Stop, peers via contract/`foreman_peers` + native SendMessage, 0 duplicate claims. | Real task: answer blocking question, override assumed answer, revisit decision, accept offer; agent records outcomes. Daemon-off hooks still work; no duplicate delivery claims; uncertain send stays uncertain. Native peer message demo in explicitly created test sessions. The Stop hook allows a turn to finish with no queued input instead of looping. | 5–6 d |
-| **3 · Pages** | Plain HTML pages on a session: mount, separate-origin serving, reload on change, tell (page → agent), pins (P1, done 2026-10-08); page writes to declared data files with a version check (P1b); the CRM (P2). Plan: [01_pages.md](01_pages.md). | P1/P1b tests plus the CRM's exit check live through the page (direct edits without an agent turn, the Voka talk, a transcript, no clobber). | 2–3 d |
+| **3 · The surface** | Plain HTML pages on a session: mount, separate-origin serving, reload on change, tell (page → agent), pins (P1, done 2026-10-08); page writes to declared data files with a version check (P1b); the CRM trial with Fresh agent and the page-edit diff (P2/P2a/P2b); rich card output (P4, grilled after the CRM). Plan: [01_pages.md](01_pages.md). | P1/P1b tests plus the CRM's exit check live through the page (direct edits without an agent turn, the Voka talk, a transcript, no clobber, edit diff, Fresh agent); then Xander judges a real coding session's rich card against the terminal. | 3–4 d |
 | **4 · Inbox + attention** | Cross-session ranked inbox, read receipts, since-away view and bounded notifications. | After 2 h away, show unseen revisions plus unresolved work, rank deterministically, retain drafts/receipts across rebuild, notify only eligible items. Resolve Q1 (Board) before its dependent UI is declared complete. | 2–3 d |
 
 ### 18.1 Phase-0 verdicts
@@ -435,8 +439,9 @@ Not separately run: daemon disconnect mid-submit (covered by `attempt_id` idempo
 file-only hook/queue path, which needs no daemon), c11 wrapper coexistence.
 
 **Checkpoint:** dogfood for one week. Record steering actions through Foreman versus direct
-terminal input and the reasons for switching. Does Xander steer most sessions from Foreman?
-If not, fix the core/rethink before proceeding.
+terminal input and the reasons for switching. The test (D23): does the visual surface clearly let
+Xander take in more from his agents than reading terminal text, so that he steers most sessions from
+Foreman instead of c11? If not, fix the core/rethink before proceeding.
 
 After checkpoint: **5** handover → launch-next, macros/headless jobs (3–4 d); **6** workspace and
 doc decisions (4–5 d). Panels became pages (phase 3). Follow-ups: AskUserQuestion forwarding without any
@@ -472,7 +477,11 @@ shipped behavior into `docs/reference/`, drain this plan, update the router.
 | **D18** | Pause vs Stop (2026-09-28) | **Pause** = a cooperative "park now" batch (finish the step, record progress, end the turn), delivered ahead of queued sends through the normal routes — managed and observed. **Stop** = one ESC into a managed terminal, only while OSC 9;4 says busy; conversation and PTY kept. If an early ESC leaves the prompt as a draft, the card says so and offers the terminal (no auto-clear). Observed sessions get no Stop. |
 | **D19** | Observed summaries (2026-09-28) | Managed = handover card only. Observed = normal terminal summary **plus** the card. |
 | **D20** | Rich UI (2026-10-08) | **Plain HTML pages, no custom structure.** A session can show an HTML file from its folder. **Two channels** (revised 2026-10-08 after P1, Xander: "buttons and toggles should just work like a regular web page"): the page saves direct edits to data files the agent declared writable (generic whole-file PUT with If-Match, never code files); talking and page changes go to the agent as tells. Foreman adds only serving, the guarded write, reload on change and the tell. No component catalog, surface schema or per-domain API. Domain rules live in the folder. Plan: [01_pages.md](01_pages.md). |
-| **Order** | Build order | Spike → core (phases 1–2) → pages (3) → inbox (4) → one-week checkpoint → handover/launch-next → workspace. Pages before inbox: decided 2026-10-08. |
+| **D21** | One surface, two layers (2026-10-08) | **HTML replaces terminal text** as the human ↔ agent interface. Each session has the **card** (common layer, Foreman's React UI: goal/progress, click-to-answer questions, decisions, handover, Send) and an optional **page** (custom layer, agent-built per project, forked from a starter page shipped with the skill; coding sessions start without one). Agent questions and replies stay on the card, in the CRM too. The two stay technically separate (daemon origin vs sandboxed page origin); the on-screen layout is decided when building rich card output. |
+| **D22** | Agent sees direct edits (2026-10-08, reverses part of D20) | Most clicks save silently with no agent turn; at each delivery Foreman injects a capped line diff of the page's writable files since the agent's last delivery. A page may make a specific action also send a tell. Typed text reaches the agent only on Send, never as a live draft. |
+| **D23** | Audience and adoption test (2026-10-08) | **Xander only** for now, public maybe later. Foreman replaces c11 for agent work only once the visual surface clearly lets him take in more from agents than terminal text; the CRM is the first trial (human → agent), rich card output the second and deciding one (agent → human). |
+| **D24** | CRM agent and reach (2026-10-08) | One long-lived Opus session per page agent, restarted often for clean context through a one-click **Fresh agent** (never an automatic rebind on `/clear`). Laptop only; phone access is a later want. |
+| **Order** | Build order | Spike → core (phases 1–2) → pages (3: P1, P1b, the CRM trial with Fresh agent + edit diff, then rich card output) → inbox (4) → one-week checkpoint / c11 switch → handover/launch-next → workspace. Pages before inbox: decided 2026-10-08; rich card before inbox: decided 2026-10-08 (the inbox pays off only once many sessions run in Foreman, which follows the rich card). |
 
 
 ### 19.1 Questions not settled by the recorded decisions

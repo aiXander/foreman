@@ -130,7 +130,7 @@ List the human's batches for you that are not yet fully acted on, and acknowledg
 
 Full name: `mcp__plugin_foreman_foreman__foreman_page`
 
-Show a plain HTML file from your folder as this session's page in Foreman, beside the card and terminal. The page saves direct edits to the data files you declare `writable` itself (no message to you); what the human says to you from it arrives as notes marked [page <title>]. You change the page's code, and data on request, by editing the files (re-read a writable file first). path null unmounts it.
+Show a plain HTML file from your folder as this session's page in Foreman, beside the card and terminal. The page saves direct edits to the data files you declare `writable` itself (no turn for you; your next Foreman message starts with a diff of them); what the human says to you from it arrives as notes marked [page <title>]. You change the page's code, and data on request, by editing the files (re-read a writable file first). path null unmounts it.
 
 - `request_id`: uuid
 - `path`: string ≤4096 | null — An existing .html file under your working directory (absolute, or relative to it), or under your session's pages dir named in the contract. null unmounts your page.

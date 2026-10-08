@@ -4,7 +4,7 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { Hono } from "hono";
-import type { LaunchRequest, SendRequest, SessionDetailResponse, SessionsResponse, TellRequest, TrayPutRequest, WorkView, WsClientFrame, WsServerFrame } from "../shared/api";
+import type { LaunchRequest, PinAgentResponse, SendRequest, SessionDetailResponse, SessionsResponse, TellRequest, TrayPutRequest, WorkView, WsClientFrame, WsServerFrame } from "../shared/api";
 import type { Config } from "../shared/config";
 import { cancelBatch, createBatch, markReviewed, retargetBatch, retryBatch, tellNote } from "../shared/delivery";
 import { JournalError } from "../shared/journal";
@@ -19,10 +19,11 @@ import { Auth } from "./auth";
 import { batchViews, isOrphaned } from "./delivery-view";
 import type { Hub } from "./hub";
 import { pageOrigin } from "./page-server";
-import type { Pins } from "./pins";
+import { startPrompt, type Pins } from "./pins";
 import type { Projection } from "./projection";
 import type { StopControl } from "./stopper";
 import type { Trays } from "./trays";
+import type { PageEdits } from "./page-edits";
 import { HttpError, launchOptions, type PtydLink } from "./terminals";
 
 const UI_DIR = join(import.meta.dir, "..", "..", "dist", "ui");
@@ -61,6 +62,7 @@ export interface Deps {
   trays: Trays;
   stops: StopControl;
   pins: Pins;
+  edits: Pick<PageEdits, "take">;
 }
 
 function buildApp(d: Deps): Hono {
@@ -142,7 +144,9 @@ function buildApp(d: Deps): Hono {
     const s = journalState(c.req.param("id"));
     const body = await jsonBody<Partial<SendRequest>>(c.req.raw);
     if (!isUuid(body.batch_id) || !Number.isInteger(body.tray_revision)) throw new HttpError(400, "batch_id (UUID) and tray_revision are required");
-    const r = d.trays.send(s, body.batch_id, body.tray_revision!);
+    const pending = d.edits.take(s.session);
+    const r = d.trays.send(s, body.batch_id, body.tray_revision!, pending.text ?? undefined);
+    if (!r.replayed) pending.done();
     d.hub.recompute();
     return c.json({ ok: true, ...r });
   });
@@ -193,7 +197,10 @@ function buildApp(d: Deps): Hono {
       tells.set(pin.pin_id, [...recent, now]);
     }
     const text = tellNote(pin.title, body.text, body.context);
-    const { replayed } = createBatch(id, { batch_id: body.batch_id, run: s.run!, kind: "send", via: "page", actions: [{ type: "note", action_id: body.batch_id, text }] });
+    // What the human changed in the page since the agent's last batch rides along (P2b).
+    const pending = d.edits.take(id);
+    const { replayed } = createBatch(id, { batch_id: body.batch_id, run: s.run!, kind: "send", via: "page", actions: [{ type: "note", action_id: body.batch_id, text }], ...(pending.text ? { edits: pending.text } : {}) });
+    if (!replayed) pending.done();
     d.hub.recompute();
     return c.json({ ok: true, batch_id: body.batch_id, replayed });
   });
@@ -203,6 +210,39 @@ function buildApp(d: Deps): Hono {
     if (!isUuid(pin) || !d.pins.hide(pin)) throw new HttpError(404, "no such page");
     d.hub.recompute();
     return c.json({ ok: true });
+  });
+
+  // Start agent / Fresh agent (P2a, D24): launch a managed Claude in the pin's folder that remounts
+  // the page with the same title and `writable` (its own page.set rebinds the pin — nothing here
+  // rebinds by guess), then end the agent bound before, if Foreman manages its terminal. Launch
+  // first, so a failed launch leaves the old agent working. Replay-safe: ptyd returns the same
+  // terminal for the same request_id, and that terminal is never the one ended.
+  /** End the agent a pin was bound to, if Foreman manages its live terminal (never the one just launched). */
+  const endPrevious = async (old: JournalState | null, launched: string): Promise<PinAgentResponse["previous"]> => {
+    if (!old || !isLive(old)) return "none";
+    if (old.mode !== "managed") return "not_managed";
+    const term = liveTerminal(old);
+    if (!term || term === launched) return "none";
+    await d.ptyd.kill(term);
+    return "ended";
+  };
+  const isLive = (s: JournalState) => s.state !== "dead" && d.hub.view(s.session)?.state !== "dead";
+  const liveTerminal = (s: JournalState) => {
+    const t = s.terminal_id ? d.ptyd.terminals.get(s.terminal_id) : undefined;
+    return t?.state === "live" ? t.terminal_id : null;
+  };
+
+  app.post("/api/v1/pins/:pin/agent", async (c) => {
+    const pin = d.pins.byId(c.req.param("pin"));
+    if (!pin) throw new HttpError(404, "no such page");
+    const body = await jsonBody<{ request_id?: string }>(c.req.raw);
+    if (!isUuid(body.request_id)) throw new HttpError(400, "request_id (UUID) is required");
+    const old = pin.session ? d.projection.get(pin.session) : null;
+    const t = await d.ptyd.launch({ request_id: body.request_id, cwd: pin.cwd, prompt: startPrompt(pin) }, launchOptions());
+    const previous = await endPrevious(old, t.terminal_id);
+    d.hub.recompute();
+    const res: PinAgentResponse = { terminal_id: t.terminal_id, previous };
+    return c.json(res);
   });
 
   app.post("/api/v1/sessions/:id/batches/:batch/cancel", (c) => {

@@ -1,5 +1,5 @@
 // Thin fetch wrapper for the daemon's /api/v1. Auth is the HttpOnly cookie set by `foreman open`.
-import type { LaunchOptions, LaunchRequest, LaunchResponse, SendRequest, SessionDetailResponse, SessionsResponse, StopInfo, TellRequest, TrayPutRequest, TrayView } from "../shared/api";
+import type { LaunchOptions, LaunchRequest, LaunchResponse, PinAgentResponse, SendRequest, SessionDetailResponse, SessionsResponse, StopInfo, TellRequest, TrayPutRequest, TrayView } from "../shared/api";
 
 export class Unauthorized extends Error {}
 
@@ -45,6 +45,7 @@ export const api = {
   stop: (session: string) => post<{ ok: true; stop: StopInfo }>(`${sess(session)}/stop`, { request_id: crypto.randomUUID() }),
   markReviewed: (session: string, item: string, revision: number) => post<{ ok: true }>(`${sess(session)}/items/${encodeURIComponent(item)}/reviewed`, { revision }),
   tell: (session: string, body: TellRequest) => post<{ ok: true; batch_id: string }>(`${sess(session)}/tell`, body),
+  pinAgent: (pin: string) => post<PinAgentResponse>(`/api/v1/pins/${encodeURIComponent(pin)}/agent`, { request_id: crypto.randomUUID() }),
   hidePin: (pin: string) => post<{ ok: true }>(`/api/v1/pins/${encodeURIComponent(pin)}/hide`, {}),
 };
 

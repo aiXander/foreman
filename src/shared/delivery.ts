@@ -77,10 +77,13 @@ export function tellNote(title: string, text: string, context?: unknown): string
 // batch stays typeable by ptyd's idle submit; CRLF becomes LF.
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
 
-/** The exact text `createBatch` freezes for these actions against this state (the tray preview). */
-export function renderBatch(actions: BatchAction[], w: WorkState): string {
+/**
+ * The exact text `createBatch` freezes for these actions against this state (the tray preview),
+ * after the page-edit diff when there is one (P2b).
+ */
+export function renderBatch(actions: BatchAction[], w: WorkState, edits?: string): string {
   const lines = actions.map((a, i) => `${i + 1}. ${renderAction(a, w)} [action ${a.action_id}]`);
-  const text = [...lines, "When done, acknowledge with foreman_inbox: seen, then acted for each action (applied, declined or blocked + note)."].join("\n");
+  const text = [...(edits ? [edits, ""] : []), ...lines, "When done, acknowledge with foreman_inbox: seen, then acted for each action (applied, declined or blocked + note)."].join("\n");
   return text.replace(/\r\n?/g, "\n").replace(CONTROL, "\ufffd");
 }
 
@@ -106,6 +109,8 @@ export interface NewBatch {
   kind: "send" | "pause";
   actions: BatchAction[];
   via?: "page";
+  /** The page-edit diff to freeze at the top (P2b); not part of the replay hash. */
+  edits?: string;
 }
 
 /** Why a staged item action can no longer be sent as-is (the item moved on), or null. */
@@ -127,9 +132,9 @@ function freeze(s: JournalState | null, session: string, nb: NewBatch): Draft {
     const stale = staleReason(a, s.work);
     if (stale) throw new ToolError("CONFLICT", stale, a.action_id);
   }
-  const text = renderBatch(nb.actions, s.work);
+  const text = renderBatch(nb.actions, s.work, nb.edits);
   if (Buffer.byteLength(text) > MAX_BATCH_TEXT_BYTES) throw new ToolError("LIMIT", `batch text exceeds ${MAX_BATCH_TEXT_BYTES} bytes`);
-  const payload = validatePayload("batch.created", { batch_id: nb.batch_id, run: nb.run, kind: nb.kind, actions: nb.actions, text, ...(nb.via ? { via: nb.via } : {}) });
+  const payload = validatePayload("batch.created", { batch_id: nb.batch_id, run: nb.run, kind: nb.kind, actions: nb.actions, text, ...(nb.via ? { via: nb.via } : {}), ...(nb.edits ? { edits: nb.edits } : {}) });
   return { type: "batch.created", payload, fields: { session, run: nb.run, source: "daemon" } };
 }
 
@@ -188,7 +193,7 @@ export function retargetBatch(session: string, oldBatchId: string, newBatchId: s
       const st = batchStatus(b);
       if (st !== "queued") throw new ToolError("CONFLICT", `batch is ${st}; only a batch that was never handed over can be retargeted`);
       const actions = b.actions.map((a) => ({ ...a, action_id: crypto.randomUUID() }));
-      const created = freeze(s, session, { batch_id: newBatchId, run: s.run, kind: "send", actions, ...(b.via ? { via: b.via } : {}) });
+      const created = freeze(s, session, { batch_id: newBatchId, run: s.run, kind: "send", actions, ...(b.via ? { via: b.via } : {}), ...(b.edits ? { edits: b.edits } : {}) });
       const cancel = validatePayload("batch.cancelled", { batch_id: oldBatchId, reason: `moved to the current run as batch ${newBatchId}`, by: "human" });
       return { drafts: [{ type: "batch.cancelled", payload: cancel, fields: { session, run: s.run, source: "daemon" } }, created], result: null };
     },

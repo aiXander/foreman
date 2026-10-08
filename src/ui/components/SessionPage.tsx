@@ -1,15 +1,16 @@
-import { useCallback, useEffect, useState } from "react";
-import type { ActivityEntry, BatchView, SessionView, TrayView, WorkView } from "../../shared/api";
-import { api, Unauthorized } from "../client";
+import type { SessionView } from "../../shared/api";
 import { basename, clock, dateTime, describeActivity, modeLabel, relPath, relTime, sessionTitle, stateLabel, useNow } from "../format";
 import { Controls } from "./Controls";
 import { Deliveries } from "./Deliveries";
 import { Items } from "./Items";
-import { Tray, useTray } from "./Tray";
+import { Tray } from "./Tray";
+import { useCardData } from "./useCardData";
 import { Brief, Handover } from "./Work";
 import { Lamp } from "./Lamp";
 import { PagePane, type PagePin } from "./PagePane";
+import { SideCard } from "./SideCard";
 import { TerminalPane } from "./TerminalPane";
+import { navigate } from "../route";
 
 export type ViewMode = "visual" | "terminal" | "page";
 
@@ -64,7 +65,7 @@ export function SessionPage({
         </div>
       ) : showPage ? (
         <div className="min-h-0 flex-1">
-          <PagePane pin={page.pin} agent={page.agent} rev={page.rev} onOpenCard={() => setMode("visual")} onUnauthorized={onUnauthorized} />
+          <PagePane pin={page.pin} agent={page.agent} rev={page.rev} onOpenCard={() => setMode("visual")} onUnauthorized={onUnauthorized} side={pageSide(s, page.agent, setMode, onUnauthorized)} />
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
@@ -73,6 +74,17 @@ export function SessionPage({
       )}
     </div>
   );
+}
+
+/** The bound agent's card beside the page: this session's own, or the pin's agent elsewhere. */
+function pageSide(s: SessionView, agent: SessionView | null, setMode: (m: ViewMode) => void, onUnauthorized: () => void) {
+  if (!agent || agent.state === "dead") return null;
+  const open = (m: ViewMode) => () => {
+    setMode(m);
+    if (agent.id !== s.id) navigate({ name: "session", id: agent.id });
+  };
+  const terminal = agent.mode === "managed" && agent.terminal_id ? open("terminal") : null;
+  return <SideCard key={agent.id} s={agent} onOpenCard={open("visual")} onOpenTerminal={terminal} onUnauthorized={onUnauthorized} />;
 }
 
 const modeName: Record<ViewMode, string> = { visual: "Card", terminal: "Terminal", page: "Page" };
@@ -93,43 +105,7 @@ function ViewSeg({ modes, mode, setMode }: { modes: ViewMode[]; mode: ViewMode; 
 }
 
 function Card({ s, now, onOpenTerminal, onUnauthorized }: { s: SessionView; now: number; onOpenTerminal: (() => void) | null; onUnauthorized: () => void }) {
-  const [activity, setActivity] = useState<ActivityEntry[] | null>(null);
-  const [batches, setBatches] = useState<BatchView[]>([]);
-  const [work, setWork] = useState<WorkView | null>(null);
-  const [tray, setTray] = useState<TrayView | null>(null);
-  const [activityError, setActivityError] = useState<string | null>(null);
-  const [tick, setTick] = useState(0);
-  const reload = useCallback(() => setTick((n) => n + 1), []);
-
-  // Refetch whenever the journal advances, the delivery summary changes (orphan/unseen are
-  // time-based) or the tray changes elsewhere (another tab).
-  const deliveryKey = JSON.stringify(s.delivery);
-  useEffect(() => {
-    if (s.id.startsWith("reg-")) return;
-    let cancelled = false;
-    api
-      .session(s.id)
-      .then((r) => {
-        if (!cancelled) {
-          setActivity(r.activity);
-          setBatches(r.batches);
-          setWork(r.work);
-          setTray(r.tray);
-          setActivityError(null);
-        }
-      })
-      .catch((e) => {
-        if (cancelled) return;
-        if (e instanceof Unauthorized) onUnauthorized();
-        else setActivityError(e instanceof Error ? e.message : String(e));
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [s.id, s.last_seq, deliveryKey, s.unsent, tick, onUnauthorized]);
-
-  const t = useTray(s.id, tray, setTray, reload, onUnauthorized);
-  const steerable = s.capabilities.cards && !s.id.startsWith("reg-");
+  const { activity, batches, work, activityError, reload, t, steerable } = useCardData(s, onUnauthorized);
 
   const rows: [string, React.ReactNode][] = [];
   if (s.model) rows.push(["Model", s.model]);

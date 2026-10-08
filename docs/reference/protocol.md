@@ -77,6 +77,9 @@ the human-batch queue every delivery route claims from (the routes themselves: h
   revisions — stale → `CONFLICT`, never reinterpreted). Text carries `[action <uuid>]` per line and is
   stripped of control characters (CRLF → LF) so ptyd can always type it. The `[foreman batch <id>]`
   marker is added by the route (`hookContext` / `idleLead`), not stored; `batchMarkers()` reads it back.
+  A send created for a session with a page may open with the page-edit diff (`batch.created.edits`, also
+  frozen at the top of `text`; not part of the replay hash; carried over by retarget): see
+  [pages.md](pages.md) "Edit diff on delivery".
 - `claimNext(session, route)` appends `delivery.claimed` (fsynced) **before** the caller produces any
   output. Its unlocked peek (`peekQueue`) returns at once when the journal never had a `batch.created`
   and never parses `activity` lines — PostToolUse runs it on every tool call (~44–50 ms per hook

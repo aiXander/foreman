@@ -264,7 +264,7 @@ const HANDLERS: Record<string, Handler> = {
           title: p.title,
           writable,
           note: writable.length
-            ? "Shown in Foreman. The page saves direct edits to its writable files itself, without telling you: re-read a writable file right before you change it and make targeted edits (your Edit tool refuses a file that changed since you read it); never rewrite it from an older copy. What the human says from the page reaches you as notes marked [page <title>]."
+            ? "Shown in Foreman. The page saves direct edits to its writable files itself, without a turn for you; your next Foreman message starts with a line diff of them. Re-read a writable file right before you change it and make targeted edits (your Edit tool refuses a file that changed since you read it); never rewrite it from an older copy. What the human says from the page reaches you as notes marked [page <title>]."
             : "Shown in Foreman, read-only: the page can't save anything itself. What the human says from it reaches you as notes marked [page <title>]. Edit the files to change the page; Foreman reloads it when they change.",
         };
       },

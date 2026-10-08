@@ -146,7 +146,7 @@ export class Trays {
    */
   // reached through the server's Deps (fallow can't see it)
   // fallow-ignore-next-line unused-class-member
-  send(s: JournalState, batchId: string, trayRevision: number): { batch_id: string; replayed: boolean } {
+  send(s: JournalState, batchId: string, trayRevision: number, edits?: string): { batch_id: string; replayed: boolean } {
     const committed = s.work.batches[batchId];
     if (!committed) {
       const t = this.current(s);
@@ -154,7 +154,7 @@ export class Trays {
       if (!t.actions.length) throw new ToolError("VALIDATION", "nothing is staged");
       if (t.batch_id !== batchId) throw new ToolError("CONFLICT", "this tray is being sent under another batch id; reload it", "batch_id");
       if (!s.run) throw new ToolError("STALE_TARGET", "the session has no run to send to");
-      createBatch(s.session, { batch_id: batchId, run: s.run, kind: "send", actions: t.actions });
+      createBatch(s.session, { batch_id: batchId, run: s.run, kind: "send", actions: t.actions, ...(edits ? { edits } : {}) });
     }
     this.clearSent(s.session, batchId);
     return { batch_id: batchId, replayed: !!committed };
@@ -194,8 +194,8 @@ function trayView(t: Tray, s: JournalState): TrayView {
   const preview = t.actions.length ? renderBatch(t.actions, s.work) : null;
   const conflicts = actions.filter((a) => a.conflict).length;
   let blocked: string | null = null;
-  if (!t.actions.length) blocked = "Nothing staged.";
+  // An empty tray isn't blocked: the card's message box stages its text and sends in one go.
+  if (!s.run || s.state === "dead") blocked = "The session has ended; there is no run to send to.";
   else if (conflicts) blocked = `${conflicts} staged action${conflicts === 1 ? "" : "s"} no longer match${conflicts === 1 ? "es" : ""} the card; remove or restage ${conflicts === 1 ? "it" : "them"}.`;
-  else if (!s.run || s.state === "dead") blocked = "The session has ended; there is no run to send to.";
   return { revision: t.revision, batch_id: t.batch_id, actions, preview, preview_bytes: preview ? Buffer.byteLength(preview) : 0, blocked };
 }

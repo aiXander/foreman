@@ -2,11 +2,17 @@
 
 ## Mission
 
-**End goal: Foreman is a visual UI layer on top of Claude Code.** It lets one human work efficiently
-with many agents at once, and it lets those agents present information and the decisions they need
-in a clean, visual way instead of as terminal scrollback. Every agent stays a real, unmodified Claude
-Code session (TUI, slash commands, permission prompts, its own tools); Foreman adds the view and the
-channel back, never a replacement agent runtime. Two consequences guide every design call:
+**End goal: HTML replaces terminal text as the interface between the human and their agents.** In a
+terminal the human reads walls of text and the agent can never use images, colour, layout or a Yes/No
+button. In Foreman each session gets one HTML surface in two layers: the **card**, the common layer
+every session has (goal, progress, click-to-answer questions, decisions, handover, Send), and an optional
+**page**, a custom layer the agent builds per project (the CRM dashboard is the first) and can add
+mid-session when that helps. The human clicks, edits and types there; the agent sees what changed and
+responds, and may reshape the page. Every agent stays a real, unmodified Claude Code session (TUI, slash
+commands, permission prompts, its own tools); Foreman adds the surface and the channel back, never a
+replacement agent runtime. It is Xander's tool first (public maybe later), and it earns replacing his
+terminal multiplexer (c11) only if the visual surface clearly lets him take in more from agents than
+reading terminal text. Two consequences guide every design call:
 
 - **Thin over structured.** Agents are good at writing HTML and humans at reading it, so rich UI is a
   plain HTML page the agent edits with its own tools (D20). Foreman adds only what an agent can't do
@@ -29,8 +35,10 @@ session list/card/terminal UI, launcher) and phase 2 (the `foreman_*` MCP protoc
 session targets, batch delivery with Retry, send tray / Send / Pause / Stop, card sections, safe Markdown,
 per-project peers via Claude's native `SendMessage`), and phase 3 steps P1 + P1b, pages (`foreman_page`, a
 page listener on `localhost` that serves the folder and lets the page save its declared data files, Page
-mode, tells, pins). **Next:** P2 the CRM (`~/Documents/me/CRM`, spec in its `docs/TODO/agentic_crm.md`), then
-phase 4 (global inbox + attention).
+mode, tells, pins) and the CRM trial's build (P2: the CRM page in `~/Documents/me/CRM` saving through
+Foreman; P2a Fresh agent; P2b the page-edit diff on each batch). **Next:** the CRM's live exit check with Xander
+(its `docs/TODO/agentic_crm.md`), then rich card output (the adoption test), then phase 4 (global inbox +
+attention), then the full switch from c11.
 Plan: `docs/TODO/`.
 
 ## Blast radius
@@ -79,7 +87,9 @@ against the real `~/.foreman` (it ends every managed agent).
   127.0.0.1. A tell refused "without a click" → the page posted on load or a timer (the host requires
   frame focus; in CDP automation, a second tab steals it). Page clicks in automation: use CDP, not
   Claude-in-Chrome (see pages.md). A page save gets 404 → the path isn't declared `writable` (or is code,
-  a dotfile, a symlink, a subfolder of a writable dir); 428/412 → it sent no / a stale `If-Match`.
+  a dotfile, a symlink, a subfolder of a writable dir); 428/412 → it sent no / a stale `If-Match`. A batch lacks the page-edit diff → the save landed while no
+  session was bound to the pin, or the pin was rebound since (Fresh/Start agent starts empty); `/clear` leaves
+  the pin on the old session by design (tells get "No agent": Fresh agent).
 - `submit` always `NOT_READY` after a Claude Code upgrade → the TUI layout or OSC 9;4 signal moved;
   re-run `scripts/spike/gate1-idle.ts` and fix `src/ptyd/readiness.ts` (it fails closed by design).
 

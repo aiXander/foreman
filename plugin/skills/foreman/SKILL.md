@@ -86,7 +86,7 @@ A page is a plain HTML file you show beside your card: a board, a form, a dashbo
 
 | The human | How it reaches the files | You get a turn? |
 |---|---|---|
-| clicks a toggle, edits a field, deletes a card | the page saves its own data file (`PUT`) | no |
+| clicks a toggle, edits a field, deletes a card | the page saves its own data file (`PUT`) | no: a diff of it opens your next Foreman message |
 | talks: "what next with Voka?", drops a transcript | a tell → you read the data, reason, update files | yes |
 | asks for a page change: "put deadlines on the cards" | a tell → you edit the HTML/JS/CSS | yes |
 
@@ -111,7 +111,8 @@ A page is a plain HTML file you show beside your card: a board, a form, a dashbo
   // A new file: PUT with "If-None-Match": "*" instead of If-Match (412 if it already exists).
   ```
 
-  Content types: `application/json` (a `.json` target must parse), `text/plain`, `text/markdown`; 4 MiB max. Foreman doesn't reload the frame for the page's own save, and you are not told about it.
+  Content types: `application/json` (a `.json` target must parse), `text/plain`, `text/markdown`; 4 MiB max. Foreman doesn't reload the frame for the page's own save.
+- **You see direct edits on your next Foreman message**: it starts with "Since your last Foreman message the human edited these files directly in the page" and a line diff (each hunk header names where it sits, e.g. `"id": "voka"`), capped at about 2 KB with a per-file summary past that (then `git diff` or read the file). New files in a writable dir show as name + size. Take these edits as the human's truth and context for the message; it holds only the page's saves, never yours. Turns the human starts in the terminal carry none.
 - **Change data files with your normal tools.** Re-read a writable file right before you change it (the human may have edited it from the page a second ago) and make targeted edits with Edit, which refuses a file that changed since you read it. Never rewrite a data file from memory or an older copy. Foreman reloads the frame when you change any file.
 - **Don't read a large data file whole.** Find what you need with Grep (`-n` for line numbers) or `jq` (`jq '.contacts[] | select(.id=="voka")' contacts.json`), Read only those lines (`offset`/`limit`; that also satisfies Edit's read-first check), then Edit just that part.
 - **The page talks to you with a tell**, only on a human click or keypress, never on load, a timer or a field's blur (the host refuses a tell when the frame has no focus, and more than 5 in 10 s):
@@ -125,6 +126,7 @@ A page is a plain HTML file you show beside your card: a board, a form, a dashbo
 
   It reaches you as a batch with one note, `[page <title>] <text>` plus `context: <json>` when given (2,000 characters in all). Treat it as the human's instruction and ack it like any batch. Tells are for talking and page changes, not plain field edits (those the page saves). **Long input** (a meeting transcript) goes through a file: the page writes it to the writable inbox directory, then tells you its name.
 - **What a page can do:** read files in its own folder with relative URLs (`fetch("data.json")`) and write the declared ones; load scripts inline, from its folder, or from cdn.jsdelivr.net, cdnjs.cloudflare.com and unpkg.com (pin exact versions); fonts from Google Fonts. It can't reach any other network address, Foreman's API, or dotfiles. Keep view state that must survive a reload (open record, filters, a half-typed message) in `sessionStorage`: the reload resets the URL, hash included. All pages share one origin, so prefix storage keys with the page's name.
+- **A page keeps its agent until a new one mounts it.** `/clear` in your terminal does not move the page to the new conversation (its messages then get "No agent"); the human uses the page strip's **Fresh agent** button, which ends you and starts a new agent that mounts the same page with the same `writable`. Keep everything a successor needs in files (the folder's `CLAUDE.md`, git), not only in your context.
 
 ## Writing for the human
 

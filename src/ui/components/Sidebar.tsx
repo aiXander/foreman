@@ -31,7 +31,10 @@ export function Logo({ size = 22 }: { size?: number }) {
   );
 }
 
-export function Sidebar({ sessions, pins, route }: { sessions: SessionView[]; pins: PinView[]; route: Route }) {
+const toggleBtn = "grid h-7 w-7 flex-none place-items-center rounded-md text-[15px] leading-none text-ink-3 hover:bg-panel-2 hover:text-ink";
+
+export function Sidebar({ sessions, pins, route, collapsed, onToggle }: { sessions: SessionView[]; pins: PinView[]; route: Route; collapsed: boolean; onToggle: () => void }) {
+  if (collapsed) return <Rail sessions={sessions} pins={pins} route={route} onToggle={onToggle} />;
   const groups = groupByProject(sessions);
   const activeId = route.name === "session" ? route.id : null;
   return (
@@ -41,6 +44,7 @@ export function Sidebar({ sessions, pins, route }: { sessions: SessionView[]; pi
           <Logo />
           Foreman
         </a>
+        <span className="flex-1" />
         <a
           href={href({ name: "launch" })}
           className={`btn btn-sm ${route.name === "launch" ? "btn-on" : "btn-primary"}`}
@@ -48,6 +52,9 @@ export function Sidebar({ sessions, pins, route }: { sessions: SessionView[]; pi
           <span aria-hidden className="-ml-0.5 text-[14px] leading-none">+</span>
           Launch
         </a>
+        <button type="button" onClick={onToggle} className={toggleBtn} aria-label="Collapse the sidebar" title="Collapse the sidebar ( [ )">
+          «
+        </button>
       </div>
       <div className="mx-4 h-px bg-gradient-to-r from-line-2 via-line to-transparent" />
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-4">
@@ -73,6 +80,42 @@ export function Sidebar({ sessions, pins, route }: { sessions: SessionView[]; pi
         )}
       </div>
       <SidebarFooter n={sessions.length} />
+    </nav>
+  );
+}
+
+/** The collapsed sidebar: expand, launch, then one lamp per page and per session (name on hover). */
+function Rail({ sessions, pins, route, onToggle }: { sessions: SessionView[]; pins: PinView[]; route: Route; onToggle: () => void }) {
+  const dot = "relative grid h-8 w-8 place-items-center rounded-md hover:bg-panel-2 aria-[current=page]:bg-panel-3";
+  return (
+    <nav className="flex h-full w-12 flex-none flex-col items-center gap-1 border-r border-line bg-ground-2/80 py-3 backdrop-blur-xl" aria-label="Sessions">
+      <button type="button" onClick={onToggle} className={toggleBtn} aria-label="Expand the sidebar" title="Expand the sidebar ( [ )">
+        »
+      </button>
+      <a href={href({ name: "launch" })} className={`${dot} text-[16px] text-accent`} title="Launch" aria-label="Launch">
+        +
+      </a>
+      <div className="my-1 h-px w-6 bg-line" />
+      <div className="flex min-h-0 flex-1 flex-col items-center gap-1 overflow-y-auto">
+        {pins.map((p) => {
+          const agent = sessions.find((s) => s.id === p.session);
+          const live = agent !== undefined && agent.state !== "dead";
+          return (
+            <a key={p.pin_id} href={href({ name: "page", id: p.pin_id })} aria-current={route.name === "page" && route.id === p.pin_id ? "page" : undefined} className={`${dot} text-[11px] font-semibold text-ink-2`} title={`Page: ${p.title}`}>
+              {p.title.slice(0, 2)}
+              <span className="absolute right-0.5 bottom-0.5">
+                <Lamp state={live ? agent.state : "unknown"} />
+              </span>
+            </a>
+          );
+        })}
+        {pins.length ? <div className="my-1 h-px w-6 bg-line" /> : null}
+        {sortSessions(sessions).map((s) => (
+          <a key={s.id} href={href({ name: "session", id: s.id })} aria-current={route.name === "session" && route.id === s.id ? "page" : undefined} className={`${dot} ${s.state === "dead" ? "opacity-55" : ""}`} title={`${sessionTitle(s)} (${basename(s.project)})`}>
+            <Lamp state={s.state} />
+          </a>
+        ))}
+      </div>
     </nav>
   );
 }

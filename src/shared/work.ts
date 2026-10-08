@@ -63,6 +63,8 @@ export interface BatchState {
   kind: "send" | "pause";
   /** `page`: a tell from the session's page; null = the send tray or Pause. */
   via: "page" | null;
+  /** The page-edit diff at the top of `text` (P2b), or null. */
+  edits: string | null;
   actions: BatchAction[];
   text: string;
   created_at: string;
@@ -174,6 +176,7 @@ export function reduceWork(w: WorkState, e: Stored): void {
         run: p.run,
         kind: p.kind,
         via: p.via ?? null,
+        edits: p.edits ?? null,
         actions: p.actions,
         text: p.text,
         created_at: e.ts,

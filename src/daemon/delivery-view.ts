@@ -55,6 +55,7 @@ export function batchViews(s: JournalState, now = Date.now()): BatchView[] {
         batch_id: b.batch_id,
         kind: b.kind,
         via: b.via ?? null,
+        edits: b.edits ?? null,
         run: b.run,
         current_run: b.run === s.run,
         status,

@@ -6,20 +6,33 @@ import { api, Unauthorized } from "../client";
 import { sessionTitle } from "../format";
 import { navigate } from "../route";
 import { PagePane } from "./PagePane";
+import { SideCard } from "./SideCard";
 
 export function PinPage({
   pin,
   agent,
   rev,
   onOpenSession,
+  onOpenTerminal,
   onUnauthorized,
 }: {
   pin: PinView;
   agent: SessionView | null;
   rev: number;
   onOpenSession: (id: string) => void;
+  onOpenTerminal: (id: string) => void;
   onUnauthorized: () => void;
 }) {
+  const live = agent !== null && agent.state !== "dead";
+  const side = live ? (
+    <SideCard
+      key={agent.id}
+      s={agent}
+      onOpenCard={() => onOpenSession(agent.id)}
+      onOpenTerminal={agent.mode === "managed" && agent.terminal_id ? () => onOpenTerminal(agent.id) : null}
+      onUnauthorized={onUnauthorized}
+    />
+  ) : null;
   const [error, setError] = useState<string | null>(null);
   const hide = () =>
     api
@@ -45,7 +58,7 @@ export function PinPage({
         {error ? <span className="text-[12px] text-[var(--sig-block)]">{error}</span> : null}
       </header>
       <div className="min-h-0 flex-1">
-        <PagePane pin={pin} agent={agent} rev={rev} onOpenCard={agent ? () => onOpenSession(agent.id) : null} onUnauthorized={onUnauthorized} />
+        <PagePane pin={pin} agent={agent} rev={rev} onOpenCard={agent ? () => onOpenSession(agent.id) : null} onUnauthorized={onUnauthorized} side={side} />
       </div>
     </div>
   );

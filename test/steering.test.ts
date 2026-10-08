@@ -43,7 +43,7 @@ beforeAll(async () => {
   projection.start();
   await ptyd.start();
   hub.start();
-  server = serve({ config, auth: new Auth(secret, config), hub, projection, ptyd, trays, stops: new StopControl(ptyd), pins: new Pins(`http://localhost:${port + 1}`) });
+  server = serve({ config, auth: new Auth(secret, config), hub, projection, ptyd, trays, stops: new StopControl(ptyd), pins: new Pins(`http://localhost:${port + 1}`), edits: { take: () => ({ text: null, done: () => {} }) } });
 });
 
 afterAll(() => {

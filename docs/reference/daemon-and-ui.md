@@ -11,7 +11,7 @@ The page listener, pins, the tell route and the UI's Page mode are in [pages.md]
 |---|---|
 | `src/shared/api.ts` | **The** daemon ⇄ browser contract (`SessionView`, SSE `StreamEvent`, WS frames). UI imports it directly. |
 | `src/daemon/auth.ts` | Host allowlist, exact-Origin checks, CLI bearer (`secrets/ui-token`), signed cookie, one-use launch tokens. |
-| `src/daemon/projection.ts` | Disposable SQLite projection: folds journals, stores per-session byte offset, FSEvents watch + 1 s poll. Bump `SCHEMA_VERSION` whenever `JournalState`'s shape or fold rules change (it stores the fold as JSON; v2 added `work`, v3 batch corroboration + cancel `by`, v4 cancelled batches drop their item receipts, v5 `page`/`page_event` + batch `via`). |
+| `src/daemon/projection.ts` | Disposable SQLite projection: folds journals, stores per-session byte offset, FSEvents watch + 1 s poll. Bump `SCHEMA_VERSION` whenever `JournalState`'s shape or fold rules change (it stores the fold as JSON; v2 added `work`, v3 batch corroboration + cancel `by`, v4 cancelled batches drop their item receipts, v5 `page`/`page_event` + batch `via`, v6 page `writable`, v7 batch `edits`). |
 | `src/daemon/view.ts` | Evidence merge → `SessionView`: journal state + ptyd terminal + registry row. Capability labels live here. |
 | `src/daemon/hub.ts` | Current views, 2 s registry poll, 30 s staleness tick, SSE ring (`<epoch>:<cursor>` ids), ptyd bind sync. |
 | `src/daemon/terminals.ts` | `PtydLink` (control connection, terminal mirror, `bind` CAS), managed launcher, `launchOptions()` from `claude --help`. |
@@ -21,7 +21,7 @@ The page listener, pins, the tell route and the UI's Page mode are in [pages.md]
 | `src/daemon/stopper.ts` | `StopControl`: Stop → ptyd `interrupt`, then watches `input_state` for the leftover draft (`SessionView.stop`). |
 | `src/daemon/delivery-view.ts` | `SessionView.delivery` summary (queued / held / why waiting / unseen / old run) and `BatchView`s for the detail route; orphan detection. |
 | `src/cli/commands/{daemon,up,down,open,status}.ts` | Service lifecycle; `open` mints a launch link with the bearer secret. |
-| `src/ui/` | React 19 + Vite + Tailwind 4 SPA (hash routes). `live.ts` = snapshot + SSE; `components/TerminalPane.tsx` = xterm over the WS. Card sections: `Work.tsx` (brief/progress/handover), `Items.tsx` (needs-you, decisions, receipts), `Tray.tsx` (`useTray` staging + Send), `Controls.tsx` (Pause/Stop), `Deliveries.tsx` (sent batches). |
+| `src/ui/` | React 19 + Vite + Tailwind 4 SPA (hash routes). `live.ts` = snapshot + SSE; `components/TerminalPane.tsx` = xterm over the WS. Card sections: `Work.tsx` (brief/progress/handover), `Items.tsx` (needs-you, decisions, receipts), `Tray.tsx` (`useTray` staging + the "Message the agent" box), `Controls.tsx` (Pause/Stop), `Deliveries.tsx` (sent batches); `useCardData.ts` fetches what a card shows, for the full card and `SideCard.tsx` (the card beside a page). `Sidebar.tsx` collapses to a lamp rail (`«` / `»` or the `[` key; `localStorage` `foreman.sidebar`). |
 | `src/ui/styles.css` | The look: dark-only tokens (`--ground/panel/ink/line/accent`, `--sig-*` state colours) mapped into Tailwind, plus shared classes — `.btn` (`-sm`/`-primary`/`-on` = staged choice/`-link`), `.field`, `.surface`, `.chip`, `.eyebrow` (section label), `.seg`, `.kbd`, `.enter` (mount fade). Any element with `data-state="<ActivityState>"` sets `--sig`, which `.lamp`, `.strip` (state-tinted card), `.tile` and `.sig-text` read; batch statuses and item kinds borrow it through small tone maps. Reuse these instead of one-off utility stacks. |
 
 ## Behaviour worth knowing before changing it
@@ -77,7 +77,8 @@ projection; all are cookie + exact-Origin (or bearer) like other mutations.
 | `POST /sessions/:id/pause` `{batch_id}` | A `kind:"pause"` batch (action id = batch id). Observed + no turn running (hook state not working/permission/input) → 409 "Already idle" up front. Managed idle is left to the idle worker, which moots it. |
 | `POST /sessions/:id/stop` `{request_id}` | Managed only, terminal live and routed to the current target → ptyd `interrupt` (one ESC, busy only; see [terminal-host.md](terminal-host.md)). |
 | `POST …/batches/:batch/cancel` · `…/retarget` `{batch_id}` | Cancel any `queued` batch (`by:"human"`); retarget an earlier run's queued send (rules in [protocol.md](protocol.md)). |
-| `POST /sessions/:id/tell` `{batch_id, pin_id, text, context?}` | A page's click as one `note` batch, no tray (see [pages.md](pages.md)). |
+| `POST /sessions/:id/tell` `{batch_id, pin_id, text, context?}` | A page's click as one `note` batch, no tray (see [pages.md](pages.md)). It and Send take the session's pending page-edit diff (`PageEdits.take`) and clear it only once the batch is durable and not a replay. |
+| `POST /pins/:pin/agent` `{request_id}` | Start agent / Fresh agent: launch a managed Claude in `pin.cwd` that remounts the page, then SIGTERM the old bound agent's managed terminal → `{terminal_id, previous: ended\|not_managed\|none}` (see [pages.md](pages.md)). |
 | `POST /sessions/:id/items/:item/reviewed` `{revision}` | `item.reviewed` for a decision at that exact revision (a local review; the agent is not told). |
 
 - **Tray storage:** `ui/events.jsonl` under its own lock (`ui/.write-lock`), durable appends, read
@@ -86,7 +87,10 @@ projection; all are cookie + exact-Origin (or bearer) like other mutations.
   exists, is **reconciled** (dropped / re-minted) and written the next time the tray is read. The file is
   never compacted yet (each edit appends the whole tray, ≤ ~20 KiB).
 - **Preview = frozen text:** `TrayView.preview` is `renderBatch` over the same state `createBatch` uses,
-  so a Send without conflicts freezes exactly it. `TrayView.blocked` says why Send is refused.
+  so a Send without conflicts freezes exactly it. `TrayView.blocked` says why Send is refused (ended
+  session, conflicts); an empty tray is not blocked. The **message box** (top of the tray) stages its
+  text as a `note` on top of what is staged and Sends the whole tray in one go (⌘↵ or Send); Stage keeps
+  it for later.
 - **Session detail** also carries `work` (brief, progress, items with `actionable`, handover) and `tray`.
   `SessionView` adds `unsent` (badge in the sidebar/overview), `terminal_progress` (ptyd's OSC 9;4
   reading; Stop is enabled only on `busy`) and `stop` (`{at, draft}` until the next turn starts).
@@ -95,7 +99,7 @@ projection; all are cookie + exact-Origin (or bearer) like other mutations.
   link. Nothing clears it; the idle worker's own reason (draft) holds delivery meanwhile.
 - **Card order:** status + Pause/Stop → brief/progress (bar, ETA, confidence, now, checklist, quiet
   after 20 min) → needs-you items → decisions (Mark reviewed, Revisit) → deliverables/notes → closed →
-  handover; right column: send tray → sent batches (Retry / Move to current run / Cancel, per-action
+  handover; right column: message box + send tray → sent batches (Retry / Move to current run / Cancel, per-action
   receipts with declined/blocked notes, terminal link) → activity.
 - **Agent Markdown (plan §16):** the handover summary and item details render through a small subset
   (`src/ui/markdown.ts` → `components/Markdown.tsx`: paragraphs, headings, lists, fenced code,

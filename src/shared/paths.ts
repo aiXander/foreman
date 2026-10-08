@@ -42,6 +42,8 @@ export const paths = {
   uiLock: () => join(foremanHome(), "ui", ".write-lock"),
   // The last few versions of each file a page replaced (P1b undo), per pin; never in the user's folder.
   pageBackups: (pinId: string) => join(foremanHome(), "ui", "page-backups", pinId),
+  // What each page saved since its agent's last batch (P2b), one JSON file per pin.
+  pageEdits: (pinId: string) => join(foremanHome(), "ui", "page-edits", `${pinId}.json`),
   logs: () => join(foremanHome(), "logs"),
 };
 

@@ -12,6 +12,7 @@ import type { Server } from "bun";
 import type { Config } from "../shared/config";
 import { ensureDir, paths } from "../shared/paths";
 import { badSegment, writableCovers } from "../shared/writable";
+import type { PageEdits } from "./page-edits";
 import type { Pin, Pins } from "./pins";
 
 /** Where a page may load code and fonts from besides its own folder: a short, pinned CDN list. */
@@ -205,7 +206,7 @@ function commit(pin: Pin, target: { abs: string; rel: string }, body: Uint8Array
  * The request handler for one listener (exported for tests; `servePages` binds it). It holds the
  * per-pin write rate.
  */
-export function pageHandler(config: Config, pins: Pick<Pins, "byToken" | "noteWrite">): (req: Request) => Promise<Response> {
+export function pageHandler(config: Config, pins: Pick<Pins, "byToken" | "noteWrite">, edits?: Pick<PageEdits, "record">): (req: Request) => Promise<Response> {
   const headers = pageHeaders(config);
   const origin = pageOrigin(config);
   const writes = new Map<string, number[]>();
@@ -239,6 +240,7 @@ export function pageHandler(config: Config, pins: Pick<Pins, "byToken" | "noteWr
     const etag = etagOf(body);
     pins.noteWrite(target.abs, etag);
     if (!commit(pin, target, body, old)) return deny(412, "the file was just created; read it and send If-Match");
+    edits?.record(pin, target.rel, old, body); // the agent sees it as a diff on its next batch (P2b)
     console.log(`page write: pin ${pin.pin_id} ${target.rel} ${body.byteLength} bytes`);
     return new Response(null, { status: old ? 200 : 201, headers: { ...headers, ETag: etag } });
   };
@@ -264,6 +266,6 @@ export function pageHandler(config: Config, pins: Pick<Pins, "byToken" | "noteWr
   };
 }
 
-export function servePages(config: Config, pins: Pins): Server<undefined> {
-  return Bun.serve({ hostname: config.bind, port: config.page_port, maxRequestBodySize: WRITE_LIMITS.maxBytes + 64 * 1024, fetch: pageHandler(config, pins) });
+export function servePages(config: Config, pins: Pins, edits: PageEdits): Server<undefined> {
+  return Bun.serve({ hostname: config.bind, port: config.page_port, maxRequestBodySize: WRITE_LIMITS.maxBytes + 64 * 1024, fetch: pageHandler(config, pins, edits) });
 }

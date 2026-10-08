@@ -97,6 +97,8 @@ const payloads = {
     text: z.string().min(1).refine((t) => Buffer.byteLength(t) <= MAX_BATCH_TEXT_BYTES, "batch text too large"),
     /** `page`: a tell from the session's page (sent without the tray); absent = the send tray / Pause. */
     via: z.literal("page").optional(),
+    /** The page-edit diff frozen at the top of `text` (P2b); absent = none. */
+    edits: z.string().min(1).max(8192).optional(),
   }),
   /** Explicit human retry of an uncertain delivery: the head batch becomes claimable again. */
   "batch.retry": z.strictObject({ batch_id: uuid }),

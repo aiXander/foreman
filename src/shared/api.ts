@@ -132,6 +132,8 @@ export interface BatchView {
   kind: "send" | "pause";
   /** `page`: a tell from the session's page (no tray). */
   via: "page" | null;
+  /** The page-edit diff frozen at the top of `text` (P2b), or null. */
+  edits: string | null;
   run: string;
   current_run: boolean;
   status: BatchStatusView;
@@ -229,6 +231,16 @@ export interface LaunchRequest {
 
 export interface LaunchResponse {
   terminal_id: string;
+}
+
+/** `POST /pins/:pin/agent`: Start agent / Fresh agent (P2a). */
+export interface PinAgentResponse {
+  terminal_id: string;
+  /**
+   * The agent bound before: `ended` (its managed terminal was told to quit), `not_managed` (an
+   * observed session Foreman can't end; it keeps running, unbound once the new one mounts), `none`.
+   */
+  previous: "ended" | "not_managed" | "none";
 }
 
 /** SSE `data` payloads; the SSE `id` is `<epoch>:<cursor>`. */

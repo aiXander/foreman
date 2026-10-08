@@ -107,11 +107,20 @@ export class PtydLink {
     return this.need().request<InterruptResult>({ op: "interrupt", ...req });
   }
 
+  /** Signal a managed terminal's process (SIGTERM: Claude exits as if the terminal closed). */
+  // reached through the server's Deps (fallow can't see it)
+  // fallow-ignore-next-line unused-class-member
+  kill(terminalId: string): Promise<{ signaled: boolean }> {
+    return this.need().request<{ signaled: boolean }>({ op: "kill", terminal_id: terminalId, signal: "SIGTERM" });
+  }
+
   private need(): PtyClient {
     if (!this.conn) throw new PtyError("RESYNC_REQUIRED", "terminal host (ptyd) is not connected");
     return this.conn;
   }
 
+  // reached through the server's Deps (fallow can't see it)
+  // fallow-ignore-next-line unused-class-member
   async launch(req: LaunchRequest, options: LaunchOptions): Promise<TerminalInfo> {
     const c = this.conn;
     if (!c) throw new HttpError(503, "terminal host (ptyd) is not running — run `foreman up`");

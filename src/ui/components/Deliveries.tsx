@@ -109,6 +109,12 @@ function Batch({ s, b, now, onOpenTerminal, onChanged, onUnauthorized }: Omit<Pr
         <span className="flex-1" />
         <span className="text-[12px] text-ink-3">{relTime(b.created_at, now)}</span>
       </div>
+      {b.edits ? (
+        <details className="mt-1.5 text-[12px]">
+          <summary className="cursor-pointer text-ink-3">With your page edits</summary>
+          <pre className="mt-1 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-ground-2 px-2.5 py-1.5 font-mono text-[11.5px] text-ink-2">{b.edits}</pre>
+        </details>
+      ) : null}
       {b.cancelled ? <p className="mt-1 text-ink-3">{b.cancelled.by === "auto" ? `Not needed: ${b.cancelled.reason}.` : `Cancelled: ${b.cancelled.reason}.`}</p> : null}
       {b.warning ? <p className="mt-1.5 rounded-md bg-warn-bg px-2.5 py-1.5">{b.warning}</p> : null}
       {b.kind === "send" && acted > 0 ? (

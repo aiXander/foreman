@@ -84,6 +84,15 @@ export function ignoredChange(name: string): boolean {
 
 const DEBOUNCE_MS = 150;
 
+/**
+ * The first prompt of an agent launched for a pin (Start agent, Fresh agent): mount the page again
+ * with the same title and writable files, which rebinds the pin to the new session.
+ */
+export function startPrompt(pin: Pick<Pin, "path" | "title" | "writable">): string {
+  const writable = pin.writable.length ? `, and writable ${JSON.stringify(pin.writable)}` : "";
+  return `Show the page ${JSON.stringify(pin.path)} in Foreman: call foreman_page with that path, the title ${JSON.stringify(pin.title)}${writable}. Then wait for my messages from it.`;
+}
+
 const isDir = (path: string) => statSync(path, { throwIfNoEntry: false })?.isDirectory() === true;
 
 export class Pins {

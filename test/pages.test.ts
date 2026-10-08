@@ -17,9 +17,9 @@ const { Hub } = await import("../src/daemon/hub");
 const { serve } = await import("../src/daemon/server");
 const { Trays } = await import("../src/daemon/trays");
 const { StopControl } = await import("../src/daemon/stopper");
-const { Pins, ignoredChange } = await import("../src/daemon/pins");
+const { Pins, ignoredChange, startPrompt } = await import("../src/daemon/pins");
 const { etagOf, pageHandler, servedFile, WRITE_LIMITS } = await import("../src/daemon/page-server");
-const { startPrompt } = await import("../src/ui/components/PagePane");
+const { PageEdits } = await import("../src/daemon/page-edits");
 const { registerSessionEnd, registerSessionStart } = await import("../src/shared/registration");
 const { callTool } = await import("../src/shared/tools");
 const { foldJournal } = await import("../src/shared/reducer");
@@ -39,6 +39,7 @@ let projection: InstanceType<typeof Projection>;
 let hub: InstanceType<typeof Hub>;
 let ptyd: InstanceType<typeof PtydLink>;
 let pins: InstanceType<typeof Pins>;
+let edits: InstanceType<typeof PageEdits>;
 
 beforeAll(async () => {
   secret = loadOrCreateSecret();
@@ -46,12 +47,13 @@ beforeAll(async () => {
   projection = new Projection();
   ptyd = new PtydLink();
   pins = new Pins(pageOrigin);
+  edits = new PageEdits(pins);
   const trays = new Trays();
   hub = new Hub(projection, ptyd, null, trays, null, pins);
   projection.start();
   await ptyd.start();
   hub.start();
-  server = serve({ config, auth: new Auth(secret, config), hub, projection, ptyd, trays, stops: new StopControl(ptyd), pins });
+  server = serve({ config, auth: new Auth(secret, config), hub, projection, ptyd, trays, stops: new StopControl(ptyd), pins, edits });
   mkdirSync(join(proj, "ui"));
   writeFileSync(join(proj, "ui", "index.html"), "<!doctype html><p>counter</p>");
   writeFileSync(join(proj, "ui", "count.json"), '{"n":1}');
@@ -353,7 +355,7 @@ describe("page writes (P1b)", () => {
     expect(r.ok).toBe(true);
     refresh(a.session);
     const pin = pinFor(join(dir, "index.html"))!;
-    const handle = pageHandler(config, pins);
+    const handle = pageHandler(config, pins, edits);
     const url = (rel: string) => `http://localhost:${port + 1}/p/${pin.token}/${rel}`;
     const base = { Host: `localhost:${port + 1}`, Origin: pageOrigin, "Content-Type": "application/json" };
     const put = (rel: string, body: string, headers: Record<string, string | null> = {}) => {
@@ -546,5 +548,155 @@ describe("page writes (P1b)", () => {
     await settle(1);
     off();
     expect(seen.length).toBe(1);
+  });
+});
+
+describe("edit diff on delivery (P2b)", () => {
+  const record = (id: string, star = false, touch = "2026-10-20") => `    {\n      "id": "${id}",\n      "name": "${id.toUpperCase()}",\n      "star": ${star},\n      "next_touch": "${touch}",\n      "stage": "contacted"\n    }`;
+  const doc = (recs: string[]) => `{\n  "version": 1,\n  "contacts": [\n${recs.join(",\n")}\n  ]\n}\n`;
+  const ids = ["alpha", "voka", "omega"];
+
+  function crm(name: string) {
+    const dir = join(proj, name);
+    mkdirSync(join(dir, "inbox"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), "<p>crm</p>");
+    writeFileSync(join(dir, "contacts.json"), doc(ids.map((i) => record(i))));
+    const a = session();
+    expect(a.call("foreman_page", { path: `${name}/index.html`, title: "CRM", writable: ["contacts.json", "inbox/"] }).ok).toBe(true);
+    refresh(a.session);
+    const pin = pinFor(join(dir, "index.html"))!;
+    const handle = pageHandler(config, pins, edits);
+    const url = (rel: string) => `http://localhost:${port + 1}/p/${pin.token}/${rel}`;
+    const headers = { Host: `localhost:${port + 1}`, Origin: pageOrigin, "Content-Type": "application/json" };
+    const etag = async (rel: string) => (await handle(new Request(url(rel), { headers: { Host: headers.Host } }))).headers.get("etag")!;
+    const save = async (body: string) => (await handle(new Request(url("contacts.json"), { method: "PUT", headers: { ...headers, "If-Match": await etag("contacts.json") }, body }))).status;
+    const drop = async (rel: string, body: string) => (await handle(new Request(url(rel), { method: "PUT", headers: { ...headers, "Content-Type": "text/markdown", "If-None-Match": "*" }, body }))).status;
+    const tell = async (text: string) => {
+      const batch_id = crypto.randomUUID();
+      const r = await req("POST", `/sessions/${a.session}/tell`, { batch_id, pin_id: pin.pin_id, text });
+      expect(r.status).toBe(200);
+      return foldJournal(sessionJournal(a.session).readAll())!.work.batches[batch_id]!;
+    };
+    return { a, dir, pin, save, drop, tell };
+  }
+
+  test("page saves since the last batch ride on the next one as a line diff naming the record; then they're gone", async () => {
+    const { a, save, drop, tell } = crm("crm1");
+    expect(await save(doc([record("alpha"), record("voka", true), record("omega")]))).toBe(200);
+    expect(await save(doc([record("alpha"), record("voka", true, "2026-10-27"), record("omega")]))).toBe(200);
+    expect(await drop("inbox/2026-10-08-voka-ab12.md", "record: voka\nhello")).toBe(201);
+    const b = await tell("what did I just change?");
+    expect(b.edits).not.toBeNull();
+    expect(b.text.startsWith(b.edits!)).toBe(true);
+    expect(b.text).toContain("1. Note: [page CRM] what did I just change?");
+    expect(b.edits).toContain('@@ -13,4 +13,4 @@ "contacts" › "id": "voka"');
+    expect(b.edits).toContain('-      "star": false,\n-      "next_touch": "2026-10-20",\n+      "star": true,\n+      "next_touch": "2026-10-27",');
+    expect(b.edits).toContain("inbox/2026-10-08-voka-ab12.md: new file (18 B), not shown");
+    expect(b.edits).not.toContain("hello");
+    // The card shows it.
+    refresh(a.session);
+    expect((await req("GET", `/sessions/${a.session}`)).body.batches[0].edits).toBe(b.edits);
+    const next = await tell("and now?");
+    expect(next.edits).toBeNull();
+  });
+
+  test("an agent edit between two page saves stays out of the diff", async () => {
+    const { dir, save, tell } = crm("crm2");
+    expect(await save(doc([record("alpha", true), record("voka"), record("omega")]))).toBe(200);
+    // The agent edits another record (not through the page).
+    writeFileSync(join(dir, "contacts.json"), doc([record("alpha", true), record("voka"), record("omega", false, "2027-01-01")]));
+    expect(await save(doc([record("alpha", true), record("voka"), record("omega", false, "2027-01-01")]).replace('"stage": "contacted"', '"stage": "won"'))).toBe(200);
+    const b = await tell("x");
+    expect(b.edits).toContain('"id": "alpha"');
+    expect(b.edits).toContain('+      "stage": "won"');
+    expect(b.edits).not.toContain("2027-01-01");
+  });
+
+  test("over the budget: hunks that fit, then a summary line; a rebound pin (fresh agent) starts empty", async () => {
+    const many = Array.from({ length: 40 }, (_, i) => `r${i}`);
+    const { a, pin, dir, save, tell } = crm("crm3");
+    writeFileSync(join(dir, "contacts.json"), doc(many.map((i) => record(i))));
+    expect(await save(doc(many.map((i) => record(i, true))))).toBe(200);
+    const b = await tell("x");
+    expect(Buffer.byteLength(b.edits!)).toBeLessThan(3000);
+    expect(b.edits).toMatch(/contacts\.json: \d+ more changes not shown \(\+\d+ −\d+ lines\); read the file, or `git diff contacts.json` if the folder is in git/);
+
+    expect(await save(doc(many.map((i) => record(i, false))))).toBe(200);
+    const fresh = session();
+    expect(fresh.call("foreman_page", { path: join(dir, "index.html"), title: "CRM", writable: ["contacts.json", "inbox/"] }).ok).toBe(true);
+    refresh(fresh.session, a.session);
+    expect(pinFor(pin.path)!.session).toBe(fresh.session);
+    const r = await req("POST", `/sessions/${fresh.session}/tell`, { batch_id: crypto.randomUUID(), pin_id: pin.pin_id, text: "hi" });
+    expect(r.status).toBe(200);
+    const fb = Object.values(foldJournal(sessionJournal(fresh.session).readAll())!.work.batches)[0]!;
+    expect(fb.edits).toBeNull();
+  });
+});
+
+
+describe("Start / Fresh agent (P2a)", () => {
+  test("launches first with the pin's folder and mount prompt, then ends the old managed agent; replay never ends the new one", async () => {
+    const dir = join(proj, "fresh");
+    mkdirSync(join(dir, "inbox"), { recursive: true });
+    writeFileSync(join(dir, "index.html"), "<p>crm</p>");
+    writeFileSync(join(dir, "contacts.json"), "{}");
+    const native = `fresh-${crypto.randomUUID()}`;
+    const old = crypto.randomUUID(); // the bound agent's terminal
+    const reg = registerSessionStart({ session_id: native, cwd: proj, source: "startup" }, { FOREMAN_TERMINAL_ID: old });
+    expect(callTool("foreman_page", { target: reg.target, request_id: crypto.randomUUID(), path: "fresh/index.html", title: "CRM", writable: ["contacts.json", "inbox/"] }, { source: "cli" }).ok).toBe(true);
+    refresh(reg.session);
+    const pin = pinFor(join(dir, "index.html"))!;
+    expect(pin.session).toBe(reg.session);
+
+    const launched: any[] = [];
+    const killed: string[] = [];
+    const orig = { launch: ptyd.launch, kill: ptyd.kill };
+    let fail = false;
+    ptyd.launch = (async (r: any) => {
+      if (fail) throw new Error("ptyd down");
+      launched.push(r);
+      return { terminal_id: r.request_id };
+    }) as any;
+    ptyd.kill = (async (id: string) => (killed.push(id), { signaled: true })) as any;
+    ptyd.terminals.set(old, { terminal_id: old, state: "live", target: reg.target } as any);
+    try {
+      const request_id = crypto.randomUUID();
+      const r = await req("POST", `/pins/${pin.pin_id}/agent`, { request_id });
+      expect(r.status).toBe(200);
+      expect(r.body).toEqual({ terminal_id: request_id, previous: "ended" });
+      expect(launched[0].cwd).toBe(pin.cwd);
+      expect(launched[0].prompt).toBe(startPrompt(pin));
+      expect(launched[0].prompt).toContain('writable ["contacts.json","inbox/"]');
+      expect(killed).toEqual([old]);
+
+      // The new agent mounts the page itself (its page.set rebinds the pin); a replayed click
+      // returns the same terminal and never ends it.
+      const b = registerSessionStart({ session_id: `fresh-${crypto.randomUUID()}`, cwd: proj, source: "startup" }, { FOREMAN_TERMINAL_ID: request_id });
+      callTool("foreman_page", { target: b.target, request_id: crypto.randomUUID(), path: "fresh/index.html", title: "CRM", writable: ["contacts.json", "inbox/"] }, { source: "cli" });
+      refresh(b.session);
+      expect(pinFor(pin.path)!.session).toBe(b.session);
+      expect(pinFor(pin.path)!.writable).toEqual(["contacts.json", "inbox/"]);
+      ptyd.terminals.set(request_id, { terminal_id: request_id, state: "live", target: b.target } as any);
+      expect((await req("POST", `/pins/${pin.pin_id}/agent`, { request_id })).body.previous).toBe("none");
+      expect(killed).toEqual([old]);
+      // A tell reaches the new agent.
+      expect((await req("POST", `/sessions/${b.session}/tell`, { batch_id: crypto.randomUUID(), pin_id: pin.pin_id, text: "hi" })).status).toBe(200);
+
+      // A failed launch leaves the bound agent alone.
+      fail = true;
+      expect((await req("POST", `/pins/${pin.pin_id}/agent`, { request_id: crypto.randomUUID() })).status).toBe(500);
+      expect(killed).toEqual([old]);
+      fail = false;
+
+      // An observed agent can't be ended from here: launch anyway and say so.
+      const o = session();
+      o.call("foreman_page", { path: "fresh/index.html", title: "CRM", writable: ["contacts.json"] });
+      refresh(o.session);
+      expect((await req("POST", `/pins/${pin.pin_id}/agent`, { request_id: crypto.randomUUID() })).body.previous).toBe("not_managed");
+      expect(killed).toEqual([old]);
+      expect((await req("POST", `/pins/${crypto.randomUUID()}/agent`, { request_id: crypto.randomUUID() })).status).toBe(404);
+    } finally {
+      Object.assign(ptyd, orig);
+    }
   });
 });
