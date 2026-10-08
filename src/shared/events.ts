@@ -1,7 +1,7 @@
 // Session journal event schemas. The same definitions validate writes (hooks, CLI, daemon)
 // and replay (daemon projection), so a record that was accepted can always be read back.
 import { z } from "zod";
-import { AckOutcome, AckState, BatchAction, BriefInput, HandoverInput, ID, MAX_BATCH_ACTIONS, MAX_BATCH_TEXT_BYTES, ProgressInput, ResolveOutcome, StoredItem, UUID } from "./protocol";
+import { AckOutcome, AckState, BatchAction, BriefInput, HandoverInput, ID, MAX_BATCH_ACTIONS, MAX_BATCH_TEXT_BYTES, MAX_WRITABLE, ProgressInput, ResolveOutcome, StoredItem, UUID } from "./protocol";
 
 const JOURNAL_VERSION = 1;
 
@@ -81,6 +81,11 @@ const payloads = {
   /** The human marked this decision revision reviewed (a local review, no agent steer). */
   "item.reviewed": z.strictObject({ id: ID, revision: z.int().min(1) }),
   "handover.set": HandoverInput.omit({ target: true, request_id: true }),
+  /**
+   * The session's page (foreman_page): realpath of an .html file, or null = unmounted. `writable`:
+   * what the page may save itself, relative to its folder (absent in P1 journals = none).
+   */
+  "page.set": z.strictObject({ path: str(4096).nullable(), title: str(80).nullable(), writable: z.array(str(512)).max(MAX_WRITABLE).optional() }),
 
   // ---- human batches and their delivery (§9) ----
   "batch.created": z.strictObject({
@@ -90,6 +95,8 @@ const payloads = {
     kind: z.enum(["send", "pause"]),
     actions: z.array(BatchAction).min(1).max(MAX_BATCH_ACTIONS),
     text: z.string().min(1).refine((t) => Buffer.byteLength(t) <= MAX_BATCH_TEXT_BYTES, "batch text too large"),
+    /** `page`: a tell from the session's page (sent without the tray); absent = the send tray / Pause. */
+    via: z.literal("page").optional(),
   }),
   /** Explicit human retry of an uncertain delivery: the head batch becomes claimable again. */
   "batch.retry": z.strictObject({ batch_id: uuid }),

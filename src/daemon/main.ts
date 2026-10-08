@@ -6,6 +6,8 @@ import { Auth, loadOrCreateSecret } from "./auth";
 import { Hub } from "./hub";
 import { IdleWorker } from "./idle-worker";
 import { Projection } from "./projection";
+import { pageOrigin, servePages } from "./page-server";
+import { Pins } from "./pins";
 import { serve } from "./server";
 import { StopControl } from "./stopper";
 import { Trays } from "./trays";
@@ -26,17 +28,21 @@ export async function runDaemon(): Promise<void> {
   const worker = new IdleWorker(projection, ptyd);
   const trays = new Trays();
   const stops = new StopControl(ptyd, () => hub.recompute());
-  const hub = new Hub(projection, ptyd, worker, trays, stops);
+  const pins = new Pins(pageOrigin(config));
+  const hub = new Hub(projection, ptyd, worker, trays, stops, pins);
   projection.start();
   await ptyd.start();
   hub.start();
   worker.start();
-  const server = serve({ config, auth, hub, projection, ptyd, trays, stops });
+  const server = serve({ config, auth, hub, projection, ptyd, trays, stops, pins });
+  const pages = servePages(config, pins);
   writeServiceRecord(paths.daemonInfo(), auth.origin, DAEMON_PROTOCOL);
-  console.log(`foremand listening on ${auth.origin} (ptyd ${ptyd.up ? "connected" : "not running"})`);
+  console.log(`foremand listening on ${auth.origin}, pages on ${pageOrigin(config)} (ptyd ${ptyd.up ? "connected" : "not running"})`);
 
   const shutdown = () => {
     server.stop(true);
+    pages.stop(true);
+    pins.stop();
     worker.stop();
     stops.stopAll();
     hub.stop();

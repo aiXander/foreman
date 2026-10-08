@@ -3,6 +3,7 @@
 `foremand` projects the session journals, merges them with ptyd and Claude-registry evidence,
 and serves the React UI, a JSON API, an SSE stream and an authenticated terminal WebSocket.
 Open this when touching `src/daemon/`, `src/ui/`, the API contract, auth, or session state display.
+The page listener, pins, the tell route and the UI's Page mode are in [pages.md](pages.md).
 
 ## Where it lives
 
@@ -10,7 +11,7 @@ Open this when touching `src/daemon/`, `src/ui/`, the API contract, auth, or ses
 |---|---|
 | `src/shared/api.ts` | **The** daemon ⇄ browser contract (`SessionView`, SSE `StreamEvent`, WS frames). UI imports it directly. |
 | `src/daemon/auth.ts` | Host allowlist, exact-Origin checks, CLI bearer (`secrets/ui-token`), signed cookie, one-use launch tokens. |
-| `src/daemon/projection.ts` | Disposable SQLite projection: folds journals, stores per-session byte offset, FSEvents watch + 1 s poll. Bump `SCHEMA_VERSION` whenever `JournalState`'s shape or fold rules change (it stores the fold as JSON; v2 added `work`, v3 batch corroboration + cancel `by`, v4 cancelled batches drop their item receipts). |
+| `src/daemon/projection.ts` | Disposable SQLite projection: folds journals, stores per-session byte offset, FSEvents watch + 1 s poll. Bump `SCHEMA_VERSION` whenever `JournalState`'s shape or fold rules change (it stores the fold as JSON; v2 added `work`, v3 batch corroboration + cancel `by`, v4 cancelled batches drop their item receipts, v5 `page`/`page_event` + batch `via`). |
 | `src/daemon/view.ts` | Evidence merge → `SessionView`: journal state + ptyd terminal + registry row. Capability labels live here. |
 | `src/daemon/hub.ts` | Current views, 2 s registry poll, 30 s staleness tick, SSE ring (`<epoch>:<cursor>` ids), ptyd bind sync. |
 | `src/daemon/terminals.ts` | `PtydLink` (control connection, terminal mirror, `bind` CAS), managed launcher, `launchOptions()` from `claude --help`. |
@@ -76,6 +77,7 @@ projection; all are cookie + exact-Origin (or bearer) like other mutations.
 | `POST /sessions/:id/pause` `{batch_id}` | A `kind:"pause"` batch (action id = batch id). Observed + no turn running (hook state not working/permission/input) → 409 "Already idle" up front. Managed idle is left to the idle worker, which moots it. |
 | `POST /sessions/:id/stop` `{request_id}` | Managed only, terminal live and routed to the current target → ptyd `interrupt` (one ESC, busy only; see [terminal-host.md](terminal-host.md)). |
 | `POST …/batches/:batch/cancel` · `…/retarget` `{batch_id}` | Cancel any `queued` batch (`by:"human"`); retarget an earlier run's queued send (rules in [protocol.md](protocol.md)). |
+| `POST /sessions/:id/tell` `{batch_id, pin_id, text, context?}` | A page's click as one `note` batch, no tray (see [pages.md](pages.md)). |
 | `POST /sessions/:id/items/:item/reviewed` `{revision}` | `item.reviewed` for a decision at that exact revision (a local review; the agent is not told). |
 
 - **Tray storage:** `ui/events.jsonl` under its own lock (`ui/.write-lock`), durable appends, read

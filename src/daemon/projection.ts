@@ -9,7 +9,7 @@ import { ensureHome, paths } from "../shared/paths";
 import { foldJournal, reduce, type JournalState } from "../shared/reducer";
 import { listSessionIds, sessionJournal } from "../shared/store";
 
-const SCHEMA_VERSION = "4";
+const SCHEMA_VERSION = "6";
 const POLL_MS = 1000;
 
 interface Row {

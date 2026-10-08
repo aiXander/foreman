@@ -126,6 +126,17 @@ List the human's batches for you that are not yet fully acted on, and acknowledg
   - `outcome`?: `applied` | `declined` | `blocked`
   - `note`?: string ≤280
 
+## foreman_page
+
+Full name: `mcp__plugin_foreman_foreman__foreman_page`
+
+Show a plain HTML file from your folder as this session's page in Foreman, beside the card and terminal. The page saves direct edits to the data files you declare `writable` itself (no message to you); what the human says to you from it arrives as notes marked [page <title>]. You change the page's code, and data on request, by editing the files (re-read a writable file first). path null unmounts it.
+
+- `request_id`: uuid
+- `path`: string ≤4096 | null — An existing .html file under your working directory (absolute, or relative to it), or under your session's pages dir named in the contract. null unmounts your page.
+- `title`?: string ≤80 — Shown in the Foreman sidebar and on the agent's messages from the page. Default: the file name.
+- `writable`?: [string ≤512] ≤8 — Data the page may save itself, relative to the page's folder: files ("contacts.json"; created if missing) or existing directories ending in "/" ("inbox/"; the page may create or replace files directly inside). Never code (.html .js .css .svg …). Omitted = read-only; re-mounting replaces the list.
+
 ## foreman_peers
 
 Full name: `mcp__plugin_foreman_foreman__foreman_peers`

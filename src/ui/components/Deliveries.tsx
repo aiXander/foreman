@@ -104,6 +104,7 @@ function Batch({ s, b, now, onOpenTerminal, onChanged, onUnauthorized }: Omit<Pr
         </span>
         {last?.outcome === "transport_sent" && b.status !== "cancelled" ? <span className="text-[12px] text-ink-3">{routeLabel[last.route]}</span> : null}
         {b.kind === "send" && (b.status === "acted" || acted > 0) ? <span className="text-[12px] text-ink-3 tabular-nums">{`${acted}/${b.actions.length} acted`}</span> : null}
+        {b.via === "page" ? <span className="chip">from page</span> : null}
         {!b.current_run ? <span className="chip">earlier run</span> : null}
         <span className="flex-1" />
         <span className="text-[12px] text-ink-3">{relTime(b.created_at, now)}</span>

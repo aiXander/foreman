@@ -157,7 +157,7 @@ async function main(): Promise<void> {
     try {
       const reg = registerSessionStart(input);
       // The one deliberate behaviour change: the protocol contract (§6.3); no target — stamp.ts adds it per call.
-      const additionalContext = buildContract({ target: reg.target, mode: reg.mode, source: reg.source, tools: [...HANDLED_TOOLS], peers: startPeers(reg.session, input) });
+      const additionalContext = buildContract({ target: reg.target, mode: reg.mode, source: reg.source, tools: [...HANDLED_TOOLS], peers: startPeers(reg.session, input), pagesDir: paths.sessionPages(reg.session) });
       process.stdout.write(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionStart", additionalContext } }) + "\n");
     } catch (e: any) {
       log(event, `registration failed: ${e?.code ?? ""} ${e?.message ?? e}`);

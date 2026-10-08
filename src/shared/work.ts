@@ -61,6 +61,8 @@ export interface BatchState {
   batch_id: string;
   run: string;
   kind: "send" | "pause";
+  /** `page`: a tell from the session's page; null = the send tray or Pause. */
+  via: "page" | null;
   actions: BatchAction[];
   text: string;
   created_at: string;
@@ -171,6 +173,7 @@ export function reduceWork(w: WorkState, e: Stored): void {
         batch_id: p.batch_id,
         run: p.run,
         kind: p.kind,
+        via: p.via ?? null,
         actions: p.actions,
         text: p.text,
         created_at: e.ts,

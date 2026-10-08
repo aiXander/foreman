@@ -4,9 +4,9 @@ import { existsSync } from "node:fs";
 import { join } from "node:path";
 import type { Server, ServerWebSocket } from "bun";
 import { Hono } from "hono";
-import type { LaunchRequest, SendRequest, SessionDetailResponse, SessionsResponse, TrayPutRequest, WorkView, WsClientFrame, WsServerFrame } from "../shared/api";
+import type { LaunchRequest, SendRequest, SessionDetailResponse, SessionsResponse, TellRequest, TrayPutRequest, WorkView, WsClientFrame, WsServerFrame } from "../shared/api";
 import type { Config } from "../shared/config";
-import { cancelBatch, createBatch, markReviewed, retargetBatch, retryBatch } from "../shared/delivery";
+import { cancelBatch, createBatch, markReviewed, retargetBatch, retryBatch, tellNote } from "../shared/delivery";
 import { JournalError } from "../shared/journal";
 import { LockTimeout } from "../shared/lock";
 import { ToolError, type ErrorCode } from "../shared/protocol";
@@ -18,6 +18,8 @@ import { b64, MAX_WRITE_BYTES, type Push, type TerminalInfo } from "../shared/pt
 import { Auth } from "./auth";
 import { batchViews, isOrphaned } from "./delivery-view";
 import type { Hub } from "./hub";
+import { pageOrigin } from "./page-server";
+import type { Pins } from "./pins";
 import type { Projection } from "./projection";
 import type { StopControl } from "./stopper";
 import type { Trays } from "./trays";
@@ -34,6 +36,8 @@ const TOOL_STATUS: Record<ErrorCode, 400 | 404 | 409 | 503> = {
   STORAGE_UNAVAILABLE: 503,
 };
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+/** Daemon-side ceiling on tells per pin (the host frame has its own, tighter one). */
+const TELL_LIMIT = { count: 20, windowMs: 60_000 };
 
 interface WsData {
   terminalId: string;
@@ -56,10 +60,12 @@ export interface Deps {
   ptyd: PtydLink;
   trays: Trays;
   stops: StopControl;
+  pins: Pins;
 }
 
 function buildApp(d: Deps): Hono {
   const app = new Hono();
+  const tells = new Map<string, number[]>();
 
   app.onError((err, c) => {
     if (err instanceof HttpError) return c.json({ ok: false, error: err.message }, err.status);
@@ -102,7 +108,7 @@ function buildApp(d: Deps): Hono {
 
   app.get("/api/v1/sessions", (c) => {
     const snap = d.hub.snapshot();
-    const body: SessionsResponse = { ...snap, terminals: [...d.ptyd.terminals.values()] };
+    const body: SessionsResponse = { ...snap, terminals: [...d.ptyd.terminals.values()], page_origin: pageOrigin(d.config) };
     return c.json(body);
   });
 
@@ -165,6 +171,38 @@ function buildApp(d: Deps): Hono {
     const stop = await d.stops.stop(s, body.request_id);
     d.hub.recompute();
     return c.json({ ok: true, stop });
+  });
+
+  // A tell from the session's page (pages plan, item 4): the host already checked the frame's window
+  // and origin. It skips the send tray — the click was the human's gesture — and is otherwise a
+  // normal batch: durable before acknowledged, claimed before delivered, receipts and Retry.
+  app.post("/api/v1/sessions/:id/tell", async (c) => {
+    const id = c.req.param("id");
+    const s = journalState(id);
+    const body = await jsonBody<Partial<TellRequest>>(c.req.raw);
+    if (!isUuid(body.batch_id) || !isUuid(body.pin_id)) throw new HttpError(400, "batch_id and pin_id (UUIDs) are required");
+    if (typeof body.text !== "string") throw new HttpError(400, "text is required");
+    const pin = d.pins.byId(body.pin_id);
+    if (!pin) throw new HttpError(404, "no such page");
+    if (pin.session !== id) throw new HttpError(409, "No agent: this page isn't bound to that session. Start an agent for it.");
+    if (!s.work.batches[body.batch_id]) {
+      if (!s.run || s.state === "dead" || d.hub.view(id)?.state === "dead") throw new HttpError(409, "No agent: the session behind this page has ended. Start an agent for it.");
+      const now = Date.now();
+      const recent = (tells.get(pin.pin_id) ?? []).filter((t) => now - t < TELL_LIMIT.windowMs);
+      if (recent.length >= TELL_LIMIT.count) throw new HttpError(429, `This page sent more than ${TELL_LIMIT.count} messages in a minute; refused.`);
+      tells.set(pin.pin_id, [...recent, now]);
+    }
+    const text = tellNote(pin.title, body.text, body.context);
+    const { replayed } = createBatch(id, { batch_id: body.batch_id, run: s.run!, kind: "send", via: "page", actions: [{ type: "note", action_id: body.batch_id, text }] });
+    d.hub.recompute();
+    return c.json({ ok: true, batch_id: body.batch_id, replayed });
+  });
+
+  app.post("/api/v1/pins/:pin/hide", (c) => {
+    const pin = c.req.param("pin");
+    if (!isUuid(pin) || !d.pins.hide(pin)) throw new HttpError(404, "no such page");
+    d.hub.recompute();
+    return c.json({ ok: true });
   });
 
   app.post("/api/v1/sessions/:id/batches/:batch/cancel", (c) => {
@@ -266,10 +304,11 @@ function buildApp(d: Deps): Hono {
     const rel = c.req.path === "/" ? "index.html" : c.req.path.slice(1);
     if (rel.includes("..")) return c.notFound();
     const file = join(UI_DIR, rel);
-    if (existsSync(file) && !rel.endsWith("/")) return new Response(Bun.file(file), { headers: securityHeaders(rel) });
+    const frames = pageOrigin(d.config);
+    if (existsSync(file) && !rel.endsWith("/")) return new Response(Bun.file(file), { headers: securityHeaders(rel, frames) });
     const index = join(UI_DIR, "index.html");
     if (!existsSync(index)) return c.text("UI not built. Run `bun run build:ui`.", 503);
-    return new Response(Bun.file(index), { headers: securityHeaders("index.html") });
+    return new Response(Bun.file(index), { headers: securityHeaders("index.html", frames) });
   });
 
   return app;
@@ -302,11 +341,12 @@ function workView(s: JournalState): WorkView {
   };
 }
 
-function securityHeaders(rel: string): Record<string, string> {
+/** `frames`: the page origin, the only thing the UI may embed (pages). */
+function securityHeaders(rel: string, frames: string): Record<string, string> {
   const h: Record<string, string> = { "X-Content-Type-Options": "nosniff" };
   if (rel.endsWith(".html")) {
     h["Content-Security-Policy"] =
-      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'";
+      `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-src ${frames}; frame-ancestors 'none'; base-uri 'none'; form-action 'self'`;
     h["Cache-Control"] = "no-store";
   }
   return h;

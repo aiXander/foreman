@@ -14,6 +14,8 @@ export interface ContractInput {
   tools: string[];
   /** The peers block (peers.ts `contractPeers`); null = none, or they could not be read. */
   peers?: string | null;
+  /** This session's throwaway-pages dir (paths.sessionPages); omitted = no Pages section. */
+  pagesDir?: string;
 }
 
 export function buildContract(c: ContractInput): string {
@@ -37,6 +39,14 @@ export function buildContract(c: ContractInput): string {
     "4. Everything you write for the human must stand alone: explain the problem or decision inline, never a bare file, section or task pointer.",
     `5. ${summary}`,
     "6. If a Foreman call fails to persist, say so in the terminal; never claim a card or answer exists that wasn't recorded.",
+    ...(c.pagesDir && c.tools.includes("foreman_page")
+      ? [
+          "",
+          "Pages: foreman_page shows a plain .html file from your working directory (or a throwaway one under " +
+            c.pagesDir +
+            ") beside your card. Two channels: direct edits (a toggle, a field, a delete) the page saves itself to the data files you declare writable, with no message to you; talking and requests to change the page reach you as notes \"[page <title>] <text>\" plus an optional \"context: <json>\", the human's instructions. Before you change a writable file, re-read it (the human may just have edited it) and write it atomically (tmp + rename). You alone change the page's code; Foreman reloads the frame when files change. The skill's Pages section has the snippets.",
+        ]
+      : []),
     ...(c.peers ? ["", c.peers] : []),
   ].join("\n");
 }

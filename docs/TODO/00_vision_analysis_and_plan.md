@@ -7,13 +7,16 @@
 > **Phase 2 done (2026-09-28).** Built: the agent protocol (§8), the batch/claim queue, hook delivery +
 > idle worker + Retry (§9.2/§9.3; delivery evidence 6/6), tray + Send/Pause/Stop + retarget/cancel and
 > the card (§9.1/§11), safe Markdown (§16) and per-project peers (§10). Exit evidence 12/12 live
-> (`scripts/phase2-exit-demo.ts`). **Next:** phase 3 (inbox + attention).
+> (`scripts/phase2-exit-demo.ts`). **Phase 3 pages** ([01_pages.md](01_pages.md)): P1 done 2026-10-08 (a
+> session shows a plain HTML page; clicks reach the agent as tells; pins) and P1b done the same day (the
+> page saves its own declared data files; the agent reasons over what the human tells it). **Next:** P2
+> the CRM, then phase 4 (inbox + attention).
 >
 > **Open product choice (§19.1):** separate human Board. Pause/Stop and observed summaries were
 > decided 2026-09-28 (§19, D18/D19).
 >
-> **Build:** ~~hosted terminals~~ → protocol/steering/peers → global inbox → one-week dogfood checkpoint.
-> Workspace, macros, launch-next, panels and Codex wait until after that checkpoint.
+> **Build:** ~~hosted terminals~~ → ~~protocol/steering/peers~~ → pages → global inbox → one-week dogfood
+> checkpoint. Workspace, macros, launch-next and Codex wait until after that checkpoint.
 
 ## 0. Product and scope
 
@@ -101,7 +104,7 @@ means the stated API/evidence exists. Rows marked "phase 0" were re-verified liv
 The retained landscape conclusion is narrow: build the structured attention layer and reuse
 terminal/rendering libraries. Do not claim no competitor exists. No competitor's code is needed;
 review its licence before any future reuse. SDK-hosted agents would change the real-TUI product
-contract. Rich-panel protocol choices can wait until panels are authorized.
+contract. Rich UI is plain HTML pages, not a panel protocol (D20, [01_pages.md](01_pages.md)).
 
 ## 5. Build boundaries
 
@@ -306,7 +309,7 @@ card/terminal switch (backtick, `t`), minimal launch form (cwd, model, effort, p
 progress bar/ETA/confidence/now/checklist, needs-you items with staging clicks, decisions with Mark
 reviewed, handover, receipts incl. declined/blocked notes, send tray, Pause/Stop, sent batches with
 Retry/Move/Cancel) and unsent badges — done, same doc. **Open:** inbox, notifications, read receipts,
-keys, overview tiles showing goal/progress (phase 3).
+keys, overview tiles showing goal/progress (phase 4).
 
 Inbox landing view; projects/session list; tabs; card/terminal switch; minimal launch form
 (project/cwd, Claude model, effort, prompt). Model/effort choices are validated against the installed
@@ -339,17 +342,18 @@ file refs and provenance. Later saves use content hashes, conflict handling and 
 realpath-bounded roots and symlink destinations must be explicit. Don't build a file index/editor
 in phases 0–3. Future doc-decision inbox entries need origin identity and an explicit session target.
 
-## 13. Panels — deferred
+## 13. Pages (was: Panels)
 
-Reserve versioned item extensions. Later: approved component catalog, then sandboxed HTML if
-needed. Agent content never shares the terminal UI's origin/auth privileges; panel responses use
-the human tray. Protocol portability requires an actual implementation review, not merely reusing
-MCP Apps method names. No catalog/shim/panel schema in core.
+Replaced on 2026-10-08 (D20): no component catalog or panel schema. A session can show a **plain HTML
+page** from its folder, served on a separate origin and reloaded when files change. Two channels
+(revised 2026-10-08): the page saves direct edits to data files the agent declared writable (whole-file
+PUT with a version check), and the human talks to the agent through tells, which it reasons over; the
+agent alone changes the page's code. Plan: [01_pages.md](01_pages.md).
 
 ## 14. Macros, launch-next and style — deferred
 
 Later saved prompts may target a session or launch a new one; handovers carry `next_prompt` now
-so phase 4 can add preview/edit/launch without changing old cards. Chains must preserve explicit
+so phase 5 can add preview/edit/launch without changing old cards. Chains must preserve explicit
 send/launch intent. Personal doc conventions and prompt seeds belong in a pack. Basic core theme
 is sufficient; style memory and headless jobs wait for their phases.
 
@@ -409,7 +413,8 @@ the phase-2 estimate: its new work (lead-line framing, MCP permission wiring) is
 | **0 · Integration spike** | **Done 2026-09-28.** Every gate passed — §18.1. Terminal restore/multi-viewer were proven in phase 1. Not run: c11 wrapper coexistence (ptyd scrubs `C11_*` and skips the wrapper). | §18.1 | — |
 | **1 · Host + see** | **Done 2026-09-27.** `scripts/phase1-demo.ts` (real Claude, 7/7): five managed agents register via hooks, are bound, survive a daemon restart with the same PIDs and a browser WS reconnect (replay, no snapshot); two viewers agree after resize and delta replay. Tests (38): slow viewer dropped without stalling the child; PID reuse / stale registry not live; hostile Origin/Host/cookie rejected. UI checked in headless Chrome (render, take control, type). | — |
 | **2 · Protocol + steering + peers** | **Done 2026-09-28.** Done: MCP schemas, skill, contract, storage, batch queue + receipts, delivery routes + Retry, tray/Send/Pause/Stop + retarget/cancel, card UI, safe Markdown, peers. Delivery evidence 6/6 (`scripts/phase2-delivery-demo.ts`; covers "Stop hook doesn't loop"). Exit evidence **12/12** live (`scripts/phase2-exit-demo.ts`, haiku, 2.5 min): real task loop (blocking answer, assumed-answer override, decision revised, offer accepted, all acked, handover), uncertain holds until Retry, daemon-off MCP + PostToolUse delivery, live Stop, peers via contract/`foreman_peers` + native SendMessage, 0 duplicate claims. | Real task: answer blocking question, override assumed answer, revisit decision, accept offer; agent records outcomes. Daemon-off hooks still work; no duplicate delivery claims; uncertain send stays uncertain. Native peer message demo in explicitly created test sessions. The Stop hook allows a turn to finish with no queued input instead of looping. | 5–6 d |
-| **3 · Inbox + attention** | Cross-session ranked inbox, read receipts, since-away view and bounded notifications. | After 2 h away, show unseen revisions plus unresolved work, rank deterministically, retain drafts/receipts across rebuild, notify only eligible items. Resolve Q1 (Board) before its dependent UI is declared complete. | 2–3 d |
+| **3 · Pages** | Plain HTML pages on a session: mount, separate-origin serving, reload on change, tell (page → agent), pins (P1, done 2026-10-08); page writes to declared data files with a version check (P1b); the CRM (P2). Plan: [01_pages.md](01_pages.md). | P1/P1b tests plus the CRM's exit check live through the page (direct edits without an agent turn, the Voka talk, a transcript, no clobber). | 2–3 d |
+| **4 · Inbox + attention** | Cross-session ranked inbox, read receipts, since-away view and bounded notifications. | After 2 h away, show unseen revisions plus unresolved work, rank deterministically, retain drafts/receipts across rebuild, notify only eligible items. Resolve Q1 (Board) before its dependent UI is declared complete. | 2–3 d |
 
 ### 18.1 Phase-0 verdicts
 
@@ -433,8 +438,8 @@ file-only hook/queue path, which needs no daemon), c11 wrapper coexistence.
 terminal input and the reasons for switching. Does Xander steer most sessions from Foreman?
 If not, fix the core/rethink before proceeding.
 
-After checkpoint: **4** handover → launch-next, macros/headless jobs (3–4 d); **5** workspace and
-doc decisions (4–5 d); **6** panels (2–3 d). Follow-ups: AskUserQuestion forwarding without any
+After checkpoint: **5** handover → launch-next, macros/headless jobs (3–4 d); **6** workspace and
+doc decisions (4–5 d). Panels became pages (phase 3). Follow-ups: AskUserQuestion forwarding without any
 auto-answer, Codex adapter, optional native communications viewer. Publication polish only on a
 separate decision. No tmux/Tauri milestone.
 
@@ -466,7 +471,8 @@ shipped behavior into `docs/reference/`, drain this plan, update the router.
 | **D17** | Loudness | Notifications for high-impact/blocking only; everything else silent. |
 | **D18** | Pause vs Stop (2026-09-28) | **Pause** = a cooperative "park now" batch (finish the step, record progress, end the turn), delivered ahead of queued sends through the normal routes — managed and observed. **Stop** = one ESC into a managed terminal, only while OSC 9;4 says busy; conversation and PTY kept. If an early ESC leaves the prompt as a draft, the card says so and offers the terminal (no auto-clear). Observed sessions get no Stop. |
 | **D19** | Observed summaries (2026-09-28) | Managed = handover card only. Observed = normal terminal summary **plus** the card. |
-| **Order** | Build order | Spike → core (phases 1–3) → one-week checkpoint → handover/launch-next → workspace → panels. |
+| **D20** | Rich UI (2026-10-08) | **Plain HTML pages, no custom structure.** A session can show an HTML file from its folder. **Two channels** (revised 2026-10-08 after P1, Xander: "buttons and toggles should just work like a regular web page"): the page saves direct edits to data files the agent declared writable (generic whole-file PUT with If-Match, never code files); talking and page changes go to the agent as tells. Foreman adds only serving, the guarded write, reload on change and the tell. No component catalog, surface schema or per-domain API. Domain rules live in the folder. Plan: [01_pages.md](01_pages.md). |
+| **Order** | Build order | Spike → core (phases 1–2) → pages (3) → inbox (4) → one-week checkpoint → handover/launch-next → workspace. Pages before inbox: decided 2026-10-08. |
 
 
 ### 19.1 Questions not settled by the recorded decisions

@@ -1,7 +1,7 @@
 // Live session/terminal state: one snapshot fetch, then SSE deltas. Any gap (resync_required,
 // a dropped stream) refetches the snapshot rather than trusting partial state.
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { SessionView, StreamEvent } from "../shared/api";
+import type { PinView, SessionView, StreamEvent } from "../shared/api";
 import type { TerminalInfo } from "../shared/ptyproto";
 import { api, Unauthorized } from "./client";
 
@@ -11,6 +11,9 @@ export interface Live {
   status: LiveStatus;
   sessions: SessionView[];
   terminals: TerminalInfo[];
+  pins: PinView[];
+  /** Per pin: how many times its folder changed since this tab loaded (a frame reloads on a bump). */
+  pageRev: Record<string, number>;
   error: string | null;
 }
 
@@ -19,6 +22,8 @@ export function useLive(): Live {
   const [error, setError] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Map<string, SessionView>>(new Map());
   const [terminals, setTerminals] = useState<Map<string, TerminalInfo>>(new Map());
+  const [pins, setPins] = useState<PinView[]>([]);
+  const [pageRev, setPageRev] = useState<Record<string, number>>({});
   const inflight = useRef<Promise<void> | null>(null);
   /** `<epoch>:<cursor>` of the last snapshot, so the first SSE connect replays anything newer. */
   const snapshotAt = useRef<string | null>(null);
@@ -31,6 +36,7 @@ export function useLive(): Live {
         snapshotAt.current = `${r.epoch}:${r.cursor}`;
         setSessions(new Map(r.sessions.map((s) => [s.id, s])));
         setTerminals(new Map(r.terminals.map((t) => [t.terminal_id, t])));
+        setPins(r.pins);
         setStatus("ok");
         setError(null);
       })
@@ -68,6 +74,12 @@ export function useLive(): Live {
           break;
         case "terminal":
           setTerminals((m) => new Map(m).set(ev.terminal.terminal_id, ev.terminal));
+          break;
+        case "pins":
+          setPins(ev.pins);
+          break;
+        case "page":
+          setPageRev((r) => ({ ...r, [ev.pin_id]: (r[ev.pin_id] ?? 0) + 1 }));
           break;
         case "resync_required":
           void refresh();
@@ -112,5 +124,5 @@ export function useLive(): Live {
     };
   }, [refresh]);
 
-  return { status, sessions: [...sessions.values()], terminals: [...terminals.values()], error };
+  return { status, sessions: [...sessions.values()], terminals: [...terminals.values()], pins, pageRev, error };
 }

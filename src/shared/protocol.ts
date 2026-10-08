@@ -191,6 +191,28 @@ export const PeersInput = z.strictObject({
   cursor: ID.optional().describe("next_cursor from a previous call."),
 });
 
+/** Most entries a page may declare writable. */
+export const MAX_WRITABLE = 8;
+
+export const PageInput = z.strictObject({
+  target,
+  request_id: requestId,
+  path: S(4096)
+    .nullable()
+    .describe("An existing .html file under your working directory (absolute, or relative to it), or under your session's pages dir named in the contract. null unmounts your page."),
+  title: S(80).optional().describe("Shown in the Foreman sidebar and on the agent's messages from the page. Default: the file name."),
+  writable: z
+    .array(S(512))
+    .max(MAX_WRITABLE)
+    .optional()
+    .describe(
+      'Data the page may save itself, relative to the page\'s folder: files ("contacts.json"; created if missing) or existing directories ending in "/" ("inbox/"; the page may create or replace files directly inside). Never code (.html .js .css .svg …). Omitted = read-only; re-mounting replaces the list.',
+    ),
+});
+
+/** A page's message to its agent (a "tell"): the note action's text limit applies to the rendered note. */
+export const MAX_TELL_TEXT = 2000;
+
 // ---------- human batch actions (§9.1) ----------
 
 const itemRef = { item_id: ID, item_revision: z.int().min(1) };
@@ -319,6 +341,15 @@ export const TOOLS: ToolSpec[] = [
       "List the human's batches for you that are not yet fully acted on, and acknowledge them: `seen` when read, then `acted` per action with outcome applied/declined/blocked (+ note unless applied). Batches also arrive by themselves marked [foreman batch <id>]; a repeated id is not a new instruction.",
     input: InboxInput,
     mutation: false,
+    readOnly: false,
+  },
+  {
+    name: "foreman_page",
+    title: "Show a page",
+    description:
+      "Show a plain HTML file from your folder as this session's page in Foreman, beside the card and terminal. The page saves direct edits to the data files you declare `writable` itself (no message to you); what the human says to you from it arrives as notes marked [page <title>]. You change the page's code, and data on request, by editing the files (re-read a writable file first). path null unmounts it.",
+    input: PageInput,
+    mutation: true,
     readOnly: false,
   },
   {

@@ -1,7 +1,7 @@
 // Compose what the UI sees from three independent evidence sources: the session journal (hooks),
 // ptyd's terminal list (managed processes) and Claude's own registry (liveness, names).
 // Missing evidence yields "unknown"; nothing here upgrades a guess to a fact.
-import type { ActivityState, Capabilities, SessionView, StopInfo } from "../shared/api";
+import type { ActivityState, Capabilities, SessionPage, SessionView, StopInfo } from "../shared/api";
 import type { NativeRow } from "../shared/native";
 import { liveness } from "../shared/proc";
 import type { TerminalInfo } from "../shared/ptyproto";
@@ -13,6 +13,7 @@ export interface ViewExtras {
   workerReason?: string | null;
   unsent?: number;
   stop?: StopInfo | null;
+  page?: SessionPage | null;
 }
 
 /** No hook evidence for this long, with no live process to vouch for it, reads as unknown. */
@@ -77,6 +78,7 @@ export function sessionView(
     unsent: extra.unsent ?? 0,
     terminal_progress: managed && term?.state === "live" ? term.progress : null,
     stop: managed ? (extra.stop ?? null) : null,
+    page: extra.page ?? null,
   };
 }
 
@@ -134,5 +136,6 @@ export function registryOnlyView(row: NativeRow, project: string): SessionView {
     unsent: 0,
     terminal_progress: null,
     stop: null,
+    page: null,
   };
 }

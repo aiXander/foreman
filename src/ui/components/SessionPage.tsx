@@ -8,17 +8,27 @@ import { Items } from "./Items";
 import { Tray, useTray } from "./Tray";
 import { Brief, Handover } from "./Work";
 import { Lamp } from "./Lamp";
+import { PagePane, type PagePin } from "./PagePane";
 import { TerminalPane } from "./TerminalPane";
 
-export type ViewMode = "visual" | "terminal";
+export type ViewMode = "visual" | "terminal" | "page";
+
+/** The session's mounted page, resolved by App from its pin (the bound agent may be another session). */
+export interface SessionPageMount {
+  pin: PagePin;
+  agent: SessionView | null;
+  rev: number;
+}
 
 export function SessionPage({
   s,
+  page,
   mode,
   setMode,
   onUnauthorized,
 }: {
   s: SessionView;
+  page: SessionPageMount | null;
   mode: ViewMode;
   setMode: (m: ViewMode) => void;
   onUnauthorized: () => void;
@@ -26,6 +36,7 @@ export function SessionPage({
   const now = useNow();
   const hasTerminal = s.mode === "managed" && s.terminal_id !== null;
   const showTerminal = hasTerminal && mode === "terminal";
+  const showPage = page !== null && mode === "page";
   const since = relTime(s.state_since, now);
 
   return (
@@ -44,27 +55,39 @@ export function SessionPage({
         </span>
         <span className="chip">{modeLabel[s.mode]}</span>
         <span className="flex-1" />
-        {hasTerminal ? (
-          <div className="seg" role="group" aria-label="View">
-            {(["visual", "terminal"] as const).map((m) => (
-              <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)}>
-                {m === "visual" ? "Card" : "Terminal"}
-              </button>
-            ))}
-          </div>
-        ) : s.mode === "observed" ? (
-          <span className="text-[12px] text-ink-3">External terminal</span>
-        ) : null}
+        {s.mode === "observed" && !hasTerminal ? <span className="text-[12px] text-ink-3">External terminal</span> : null}
+        <ViewSeg modes={["visual", ...(hasTerminal ? (["terminal"] as const) : []), ...(page ? (["page"] as const) : [])]} mode={mode} setMode={setMode} />
       </header>
       {showTerminal ? (
         <div className="min-h-0 flex-1">
           <TerminalPane terminalId={s.terminal_id!} />
+        </div>
+      ) : showPage ? (
+        <div className="min-h-0 flex-1">
+          <PagePane pin={page.pin} agent={page.agent} rev={page.rev} onOpenCard={() => setMode("visual")} onUnauthorized={onUnauthorized} />
         </div>
       ) : (
         <div className="min-h-0 flex-1 overflow-y-auto">
           <Card s={s} now={now} onOpenTerminal={hasTerminal ? () => setMode("terminal") : null} onUnauthorized={onUnauthorized} />
         </div>
       )}
+    </div>
+  );
+}
+
+const modeName: Record<ViewMode, string> = { visual: "Card", terminal: "Terminal", page: "Page" };
+
+/** Card / Terminal / Page, whichever this session has; an unavailable stored mode shows as Card. */
+function ViewSeg({ modes, mode, setMode }: { modes: ViewMode[]; mode: ViewMode; setMode: (m: ViewMode) => void }) {
+  if (modes.length < 2) return null;
+  const current = modes.includes(mode) ? mode : "visual";
+  return (
+    <div className="seg" role="group" aria-label="View">
+      {modes.map((m) => (
+        <button key={m} type="button" aria-pressed={current === m} onClick={() => setMode(m)}>
+          {modeName[m]}
+        </button>
+      ))}
     </div>
   );
 }

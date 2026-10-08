@@ -2,16 +2,19 @@ import { useCallback, useEffect, useState } from "react";
 import { BareTerminal } from "./components/BareTerminal";
 import { LaunchForm } from "./components/LaunchForm";
 import { Overview } from "./components/Overview";
-import { SessionPage, type ViewMode } from "./components/SessionPage";
+import { PinPage } from "./components/PinPage";
+import { SessionPage, type SessionPageMount, type ViewMode } from "./components/SessionPage";
 import { Logo, Sidebar } from "./components/Sidebar";
-import { useLive } from "./live";
+import type { SessionView } from "../shared/api";
+import { type Live, useLive } from "./live";
 import { navigate, useRoute } from "./route";
 
 const VIEW_KEY = "foreman.viewMode";
 
 function loadViewMode(): ViewMode {
   try {
-    return localStorage.getItem(VIEW_KEY) === "terminal" ? "terminal" : "visual";
+    const m = localStorage.getItem(VIEW_KEY);
+    return m === "terminal" || m === "page" ? m : "visual";
   } catch {
     return "visual";
   }
@@ -75,10 +78,12 @@ export function App() {
   } else if (route.name === "terminal") {
     const session = live.sessions.find((s) => s.terminal_id === route.id);
     main = <BareTerminal key={route.id} terminalId={route.id} terminal={live.terminals.find((t) => t.terminal_id === route.id)} session={session} />;
+  } else if (route.name === "page") {
+    main = <PinRoute live={live} pinId={route.id} setViewMode={setViewMode} onUnauthorized={onUnauthorized} />;
   } else if (route.name === "session") {
     const s = live.sessions.find((x) => x.id === route.id);
     main = s ? (
-      <SessionPage key={s.id} s={s} mode={viewMode} setMode={setViewMode} onUnauthorized={onUnauthorized} />
+      <SessionPage key={s.id} s={s} page={pageMount(live, s)} mode={viewMode} setMode={setViewMode} onUnauthorized={onUnauthorized} />
     ) : (
       <div className="enter px-8 py-10">
         <p className="text-[15px] text-ink">This session isn't known to Foreman.</p>
@@ -93,7 +98,7 @@ export function App() {
 
   return (
     <div className="flex h-full">
-      <Sidebar sessions={live.sessions} route={route} />
+      <Sidebar sessions={live.sessions} pins={live.pins} route={route} />
       <main className="flex min-w-0 flex-1 flex-col">
         {live.status === "offline" ? (
           <div className="flex items-center gap-2.5 border-b border-[rgb(255_194_74/0.25)] bg-warn-bg px-5 py-2 text-[13px] text-[#ffe2a3]">
@@ -105,6 +110,38 @@ export function App() {
       </main>
     </div>
   );
+}
+
+/** A session's mounted page, resolved through its pin: tells go to the pin's bound session. */
+function pageMount(live: Live, s: SessionView): SessionPageMount | null {
+  if (!s.page) return null;
+  const pin = live.pins.find((p) => p.pin_id === s.page!.pin_id);
+  const agentId = pin ? pin.session : s.id;
+  return {
+    pin: { ...s.page, cwd: pin?.cwd ?? s.cwd },
+    agent: live.sessions.find((x) => x.id === agentId) ?? null,
+    rev: live.pageRev[s.page.pin_id] ?? 0,
+  };
+}
+
+function PinRoute({ live, pinId, setViewMode, onUnauthorized }: { live: Live; pinId: string; setViewMode: (m: ViewMode) => void; onUnauthorized: () => void }) {
+  const pin = live.pins.find((p) => p.pin_id === pinId);
+  if (!pin) {
+    return (
+      <div className="enter px-8 py-10">
+        <p className="text-[15px] text-ink">This page isn't pinned in Foreman.</p>
+        <a className="btn-link mt-2 inline-block text-[13px]" href="#/">
+          Back to all sessions
+        </a>
+      </div>
+    );
+  }
+  const openSession = (id: string) => {
+    setViewMode("visual");
+    navigate({ name: "session", id });
+  };
+  const agent = live.sessions.find((x) => x.id === pin.session) ?? null;
+  return <PinPage key={pin.pin_id} pin={pin} agent={agent} rev={live.pageRev[pin.pin_id] ?? 0} onOpenSession={openSession} onUnauthorized={onUnauthorized} />;
 }
 
 function SignedOut() {

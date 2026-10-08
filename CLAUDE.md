@@ -2,22 +2,32 @@
 
 ## Mission
 
-Foreman is a local supervision layer for many parallel **Claude Code** sessions: a Bun terminal
-host (`ptyd`) runs real Claude TUIs, a Claude plugin's hooks record what each session is doing,
-and a local web daemon (`foremand`) + React UI show every session as a card with one click to its
-live terminal. The goal is lowering the human's supervision effort, not replacing Claude's TUI.
+**End goal: Foreman is a visual UI layer on top of Claude Code.** It lets one human work efficiently
+with many agents at once, and it lets those agents present information and the decisions they need
+in a clean, visual way instead of as terminal scrollback. Every agent stays a real, unmodified Claude
+Code session (TUI, slash commands, permission prompts, its own tools); Foreman adds the view and the
+channel back, never a replacement agent runtime. Two consequences guide every design call:
+
+- **Thin over structured.** Agents are good at writing HTML and humans at reading it, so rich UI is a
+  plain HTML page the agent edits with its own tools (D20). Foreman adds only what an agent can't do
+  itself: hosting, showing, reloading, saving the human's direct edits to data files the agent declared
+  writable, and carrying what the human says back as messages. No component
+  catalogs, schemas or per-domain APIs.
+- **Attention is the product.** The measure is the human's effort to supervise and steer: cards with
+  goal/progress/needs-you, answers by clicking, one Send per batch, one click to the live terminal.
+
+How: a Bun terminal host (`ptyd`) runs the real Claude TUIs; a Claude plugin (hooks + MCP tools + skill)
+records what each session does and lets it report; a local daemon (`foremand`) + React UI show it all.
 Single user, local only, macOS first, MIT. Nothing is deployed.
 
-**Built:** phase 1 "host + see" — managed terminals, session journals, passive hooks, daemon with
-auth, session list/card/terminal UI, minimal launcher — plus ptyd's idle-delivery ops
-(`input_state`/`submit`) from the phase-0 spike, which proved every delivery/identity gate.
-Phase 2 is done (exit evidence 12/12 live): the agent protocol (SessionStart contract, stdio MCP sidecar with the
-`foreman_*` tools whose session `target` a PreToolUse hook stamps, `foreman:foreman` skill,
-batch/claim queue on the journal), human batch delivery
-(PostToolUse/Stop hooks, daemon idle worker, Retry on the card), steering from the card (persisted send
-tray → Send, Pause, Stop = one ESC, retarget/cancel, brief/progress/items/handover sections, safe
-Markdown), and per-project peers (contract block + `foreman_peers`; messaging is Claude's native
-`SendMessage`). **Next:** phase 3 (global inbox + attention). Plan: `docs/TODO/`.
+**Built:** phase 1 (managed terminals, session journals, passive hooks, authenticated daemon,
+session list/card/terminal UI, launcher) and phase 2 (the `foreman_*` MCP protocol with hook-stamped
+session targets, batch delivery with Retry, send tray / Send / Pause / Stop, card sections, safe Markdown,
+per-project peers via Claude's native `SendMessage`), and phase 3 steps P1 + P1b, pages (`foreman_page`, a
+page listener on `localhost` that serves the folder and lets the page save its declared data files, Page
+mode, tells, pins). **Next:** P2 the CRM (`~/Documents/me/CRM`, spec in its `docs/TODO/agentic_crm.md`), then
+phase 4 (global inbox + attention).
+Plan: `docs/TODO/`.
 
 ## Blast radius
 
@@ -37,6 +47,7 @@ against the real `~/.foreman` (it ends every managed agent).
 | [docs/reference/storage-and-identity.md](docs/reference/storage-and-identity.md) | touching journals, locks, `~/.foreman/` layout, session/run registration, the reducer or liveness |
 | [docs/reference/terminal-host.md](docs/reference/terminal-host.md) | touching ptyd, the socket protocol, snapshots/replay, idle delivery (`input_state`/`submit`, readiness), Stop (`interrupt`) or `foreman run/attach/ls/kill` |
 | [docs/reference/protocol.md](docs/reference/protocol.md) | touching the MCP tools/schemas (`protocol.ts`, `tools.ts`), the SessionStart contract, the skill, declared work (`work.ts`), peers (`peers.ts`) or the batch queue/claims (`delivery.ts`) |
+| [docs/reference/pages.md](docs/reference/pages.md) | touching `foreman_page` / `writable`, the page listener (`page-server.ts`: reads, `PUT` writes, backups), pins (`pins.ts`, self-write suppression), the tell route / `TellGate`, the Page mode, or anything about the page origin vs the daemon cookie |
 | [docs/reference/plugin-hooks.md](docs/reference/plugin-hooks.md) | touching `plugin/` or `src/hooks/`, building hook delivery / MCP / skill (verified mechanisms and namespaces), or after a Claude Code upgrade changes hook payloads |
 | [docs/reference/daemon-and-ui.md](docs/reference/daemon-and-ui.md) | touching the daemon, auth, the API contract, SSE, the terminal WebSocket, the idle-delivery worker, delivery display/Retry, the send tray / Send / Pause / Stop routes, or the UI card |
 | [docs/TODO/](docs/TODO/) | planning the next phase; the build plan's contracts for unbuilt work live there |
@@ -60,6 +71,11 @@ against the real `~/.foreman` (it ends every managed agent).
 - Tray shows a conflict / Send refused 409 → the agent revised or resolved that item after it was
   staged (`staleReason`); remove and restage. Stop disabled → ptyd doesn't read the terminal as busy
   (`SessionView.terminal_progress`); ptyd refuses an ESC into an idle prompt by design.
+- Page frame blank / 403 → pages load only from `http://localhost:<page_port>` (daemon port + 1), never
+  127.0.0.1. A tell refused "without a click" → the page posted on load or a timer (the host requires
+  frame focus; in CDP automation, a second tab steals it). Page clicks in automation: use CDP, not
+  Claude-in-Chrome (see pages.md). A page save gets 404 → the path isn't declared `writable` (or is code,
+  a dotfile, a symlink, a subfolder of a writable dir); 428/412 → it sent no / a stale `If-Match`.
 - `submit` always `NOT_READY` after a Claude Code upgrade → the TUI layout or OSC 9;4 signal moved;
   re-run `scripts/spike/gate1-idle.ts` and fix `src/ptyd/readiness.ts` (it fails closed by design).
 
@@ -70,7 +86,8 @@ against the real `~/.foreman` (it ends every managed agent).
   (`protocol.ts` schemas, `tools.ts` handlers, `work.ts` fold, `delivery.ts` queue, `contract.ts`).
 - `src/ptyd/` — terminal host. No model or journal work here.
 - `src/daemon/` — projection, evidence merge, HTTP/SSE/WS, launcher, idle-delivery worker, delivery display,
-  send trays (`trays.ts`, in `ui/events.jsonl`), Stop (`stopper.ts`).
+  send trays (`trays.ts`, in `ui/events.jsonl`), Stop (`stopper.ts`), page pins + the page listener
+  (`pins.ts`, `page-server.ts`).
 - `src/hooks/` — hook entrypoint, bundled into `plugin/dist/hook.js`.
 - `src/mcp/` — stdio MCP sidecar, bundled into `plugin/dist/mcp.js` (MCP TS SDK v2).
 - `src/cli/` — `foreman` CLI; `main.ts` lazily loads `commands/*`.

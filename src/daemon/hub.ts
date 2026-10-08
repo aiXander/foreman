@@ -2,10 +2,11 @@
 // ptyd terminal push, registry poll, staleness tick) recomputes views; only real diffs are
 // streamed. SSE ids are `<epoch>:<cursor>`; a reconnect inside the retained window replays,
 // anything else gets `resync_required` and refetches the snapshot.
-import type { SessionView, StreamEvent } from "../shared/api";
+import type { PinView, SessionView, StreamEvent } from "../shared/api";
 import { readNativeRegistry, type NativeRow } from "../shared/native";
 import { projectRoot } from "../shared/project";
 import type { IdleWorker } from "./idle-worker";
+import type { Pins } from "./pins";
 import type { Projection } from "./projection";
 import type { StopControl } from "./stopper";
 import type { Trays } from "./trays";
@@ -24,6 +25,8 @@ export class Hub {
   private views = new Map<string, SessionView>();
   private viewJson = new Map<string, string>();
   private native = new Map<string, NativeRow>();
+  private pinViews: PinView[] = [];
+  private pinJson = "[]";
   private timers: ReturnType<typeof setInterval>[] = [];
   private recomputeQueued = false;
 
@@ -33,12 +36,15 @@ export class Hub {
     private worker: IdleWorker | null = null,
     private trays: Trays | null = null,
     private stops: StopControl | null = null,
+    private pins: Pins | null = null,
   ) {}
 
   start(): void {
     this.pollRegistry();
     this.recompute();
     this.projection.onChange(() => this.recompute());
+    this.pins?.rewatch();
+    this.pins?.onPageChange((pin_id) => this.publish({ type: "page", pin_id }));
     this.ptyd.onChange((t) => {
       if (t) this.publish({ type: "terminal", terminal: t });
       this.recompute();
@@ -60,8 +66,8 @@ export class Hub {
     for (const t of this.timers) clearInterval(t);
   }
 
-  snapshot(): { epoch: string; cursor: number; sessions: SessionView[] } {
-    return { epoch: this.epoch, cursor: this.cursor, sessions: [...this.views.values()] };
+  snapshot(): { epoch: string; cursor: number; sessions: SessionView[]; pins: PinView[] } {
+    return { epoch: this.epoch, cursor: this.cursor, sessions: [...this.views.values()], pins: this.pinViews };
   }
 
   view(id: string): SessionView | null {
@@ -91,9 +97,20 @@ export class Hub {
     } catch (e) {
       console.error(`trays unreadable: ${(e as Error).message}`); // badges only; never block the views
     }
+    try {
+      // A new foreman_page call (page.set) binds its pin here, before the views read it.
+      this.pins?.sync(states);
+    } catch (e) {
+      console.error(`pins unreadable: ${(e as Error).message}`);
+    }
     for (const s of states) {
       known.add(s.native_id);
-      const extra = { workerReason: this.worker?.reason(s.session) ?? null, unsent: unsent.get(s.session) ?? 0, stop: this.stops?.view(s.session) ?? null };
+      const extra = {
+        workerReason: this.worker?.reason(s.session) ?? null,
+        unsent: unsent.get(s.session) ?? 0,
+        stop: this.stops?.view(s.session) ?? null,
+        page: this.safePins((p) => p.sessionPage(s), null),
+      };
       next.set(s.session, sessionView(s, this.ptyd.terminals, this.native, this.ptyd.up, extra));
     }
     for (const row of this.native.values()) {
@@ -113,8 +130,25 @@ export class Hub {
       this.publish({ type: "session_removed", id });
     }
     this.views = next;
+    const pins = this.safePins((p) => p.views(), this.pinViews);
+    const pinJson = JSON.stringify(pins);
+    if (pinJson !== this.pinJson) {
+      this.pinJson = pinJson;
+      this.pinViews = pins;
+      this.publish({ type: "pins", pins });
+    }
     void this.ptyd.syncBindings(states);
     this.worker?.poke();
+  }
+
+  /** Pins are UI furniture: an unreadable pin file must never block the session views. */
+  private safePins<T>(f: (p: Pins) => T, fallback: T): T {
+    if (!this.pins) return fallback;
+    try {
+      return f(this.pins);
+    } catch {
+      return fallback;
+    }
   }
 
   private publish(event: StreamEvent): void {

@@ -4,7 +4,7 @@ How a Claude session talks to Foreman: the SessionStart contract gives it the ru
 sidecar exposes the `foreman_*` tools (a PreToolUse hook stamps the session's `target` onto each
 call), and everything lands as events in the session journal. Also
 the human-batch queue every delivery route claims from (the routes themselves: hooks in
-[plugin-hooks.md](plugin-hooks.md), the idle worker in [daemon-and-ui.md](daemon-and-ui.md)). Open this when touching `src/shared/protocol.ts`,
+[plugin-hooks.md](plugin-hooks.md), the idle worker in [daemon-and-ui.md](daemon-and-ui.md)). Pages (`foreman_page`, tells) are in [pages.md](pages.md). Open this when touching `src/shared/protocol.ts`,
 `tools.ts`, `work.ts`, `delivery.ts`, `contract.ts`, `src/mcp/`, or `plugin/skills/foreman/`.
 
 ## Where it lives
@@ -12,7 +12,7 @@ the human-batch queue every delivery route claims from (the routes themselves: h
 | File | Role |
 |---|---|
 | `src/shared/protocol.ts` | **The** Zod definitions: tool inputs (plan §8.2), item bodies, human batch actions (§9.1), limits, error codes, the tool catalogue (`TOOLS`, `qualifiedTool`). MCP, the CLI mirror, HTTP and journal replay all validate with these. |
-| `src/shared/tools.ts` | `callTool(name, input, ctx)`: target resolution + every handler. `HANDLED_TOOLS` = what this build serves (all eight tools). |
+| `src/shared/tools.ts` | `callTool(name, input, ctx)`: target resolution + every handler. `HANDLED_TOOLS` = what this build serves (all nine tools; `foreman_page` is in [pages.md](pages.md)). |
 | `src/shared/peers.ts` | Per-project peers: `readPeers` (disk reader with a time budget), `buildPeers` (pure), `contractPeers` (the SessionStart block). |
 | `src/shared/work.ts` | `WorkState` fold (brief, progress, items, handover, batches → attempts → receipts), `batchStatus`, `queueHead`, `isActionable`/`openCounts`. Pure. |
 | `src/shared/delivery.ts` | `createBatch` (freeze a Send), `claimNext` / `settle` / `retryBatch` / `onUserPrompt`, human `cancelBatch` / `retargetBatch` / `markReviewed`, rendering (`renderBatch` = the tray preview, `staleReason` = tray conflicts), hook framing (`hookContext`), idle lead (`idleLead`), marker parsing. |

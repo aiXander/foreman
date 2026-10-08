@@ -1,16 +1,18 @@
-// Hash routing: #/ overview, #/s/<session>, #/t/<terminal>, #/launch.
+// Hash routing: #/ overview, #/s/<session>, #/t/<terminal>, #/page/<pin>, #/launch.
 import { useEffect, useState } from "react";
 
 export type Route =
   | { name: "overview" }
   | { name: "session"; id: string }
   | { name: "terminal"; id: string }
+  | { name: "page"; id: string }
   | { name: "launch" };
 
 function parseRoute(hash: string): Route {
   const parts = hash.replace(/^#\/?/, "").split("/").filter(Boolean).map(decodeURIComponent);
   if (parts[0] === "s" && parts[1]) return { name: "session", id: parts[1] };
   if (parts[0] === "t" && parts[1]) return { name: "terminal", id: parts[1] };
+  if (parts[0] === "page" && parts[1]) return { name: "page", id: parts[1] };
   if (parts[0] === "launch") return { name: "launch" };
   return { name: "overview" };
 }
@@ -25,6 +27,8 @@ export function href(r: Route): string {
       return `#/s/${encodeURIComponent(r.id)}`;
     case "terminal":
       return `#/t/${encodeURIComponent(r.id)}`;
+    case "page":
+      return `#/page/${encodeURIComponent(r.id)}`;
   }
 }
 

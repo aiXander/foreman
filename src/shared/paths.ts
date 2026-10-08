@@ -23,6 +23,8 @@ export const paths = {
   sessionJournal: (uuid: string) => join(foremanHome(), "sessions", uuid, "events.jsonl"),
   sessionManifest: (uuid: string) => join(foremanHome(), "sessions", uuid, "manifest.json"),
   sessionLock: (uuid: string) => join(foremanHome(), "sessions", uuid, ".write-lock"),
+  // Throwaway pages an agent may mount without a project folder (foreman_page); served as their own root.
+  sessionPages: (uuid: string) => join(foremanHome(), "sessions", uuid, "pages"),
   // Identity map: native conversation id -> Foreman session UUID. Rebuildable from journals.
   byNative: () => join(foremanHome(), "sessions", "by-native"),
   byNativeEntry: (vendor: string, nativeId: string) =>
@@ -38,6 +40,8 @@ export const paths = {
   ui: () => join(foremanHome(), "ui"),
   uiJournal: () => join(foremanHome(), "ui", "events.jsonl"),
   uiLock: () => join(foremanHome(), "ui", ".write-lock"),
+  // The last few versions of each file a page replaced (P1b undo), per pin; never in the user's folder.
+  pageBackups: (pinId: string) => join(foremanHome(), "ui", "page-backups", pinId),
   logs: () => join(foremanHome(), "logs"),
 };
 

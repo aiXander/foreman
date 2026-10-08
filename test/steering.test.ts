@@ -16,6 +16,7 @@ const { Hub } = await import("../src/daemon/hub");
 const { serve } = await import("../src/daemon/server");
 const { Trays } = await import("../src/daemon/trays");
 const { StopControl } = await import("../src/daemon/stopper");
+const { Pins } = await import("../src/daemon/pins");
 const { registerSessionStart } = await import("../src/shared/registration");
 const { callTool } = await import("../src/shared/tools");
 const { foldJournal } = await import("../src/shared/reducer");
@@ -25,7 +26,7 @@ const { batchStatus } = await import("../src/shared/work");
 const { paths } = await import("../src/shared/paths");
 
 const port = 20000 + Math.floor(Math.random() * 20000);
-const config = { version: 1 as const, bind: "127.0.0.1" as const, port, extra_origins: [], claude_executable: "/usr/bin/true" };
+const config = { version: 1 as const, bind: "127.0.0.1" as const, port, page_port: port + 1, extra_origins: [], claude_executable: "/usr/bin/true" };
 let bearer: Record<string, string>;
 let server: ReturnType<typeof serve>;
 let projection: InstanceType<typeof Projection>;
@@ -42,7 +43,7 @@ beforeAll(async () => {
   projection.start();
   await ptyd.start();
   hub.start();
-  server = serve({ config, auth: new Auth(secret, config), hub, projection, ptyd, trays, stops: new StopControl(ptyd) });
+  server = serve({ config, auth: new Auth(secret, config), hub, projection, ptyd, trays, stops: new StopControl(ptyd), pins: new Pins(`http://localhost:${port + 1}`) });
 });
 
 afterAll(() => {

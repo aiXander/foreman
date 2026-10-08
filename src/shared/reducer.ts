@@ -37,6 +37,18 @@ export interface JournalState {
   unknown_events: number;
   /** Declared work (brief/progress/items/handover) and human batches with their receipts. */
   work: WorkState;
+  /** The page this session mounted with foreman_page (null = none / unmounted). */
+  page: PageState | null;
+  /** The latest page.set (mount or unmount); the daemon binds pins from it exactly once. */
+  page_event: { id: string; path: string | null; title: string | null; writable: string[]; at: string } | null;
+}
+
+export interface PageState {
+  path: string;
+  title: string;
+  /** What the page may save itself, relative to its folder ("data.json", "inbox/"); [] = read-only. */
+  writable: string[];
+  at: string;
 }
 
 function setState(s: JournalState, state: ActivityState, ts: string): void {
@@ -92,6 +104,8 @@ export function reduce(prev: JournalState | null, e: Stored): JournalState | nul
       activity: [],
       unknown_events: 0,
       work: emptyWork(),
+      page: null,
+      page_event: null,
     };
   }
   const s = prev;
@@ -127,6 +141,10 @@ export function reduce(prev: JournalState | null, e: Stored): JournalState | nul
       s.subagents_active = 0;
       setState(s, "dead", e.ts);
       pushActivity(s, e, { detail: p.reason });
+      return s;
+    case "page.set":
+      s.page = p.path ? { path: p.path, title: p.title ?? p.path, writable: p.writable ?? [], at: e.ts } : null;
+      s.page_event = { id: e.id, path: p.path, title: p.title, writable: p.writable ?? [], at: e.ts };
       return s;
     case "activity":
       break;

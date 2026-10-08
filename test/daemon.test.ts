@@ -16,13 +16,14 @@ const { Hub } = await import("../src/daemon/hub");
 const { serve } = await import("../src/daemon/server");
 const { Trays } = await import("../src/daemon/trays");
 const { StopControl } = await import("../src/daemon/stopper");
+const { Pins } = await import("../src/daemon/pins");
 const { appendSessionEvents } = await import("../src/shared/store");
 const { claimNext, createBatch, settle } = await import("../src/shared/delivery");
 const { registerSessionStart } = await import("../src/shared/registration");
 
 const port = 20000 + Math.floor(Math.random() * 20000);
 const origin = `http://127.0.0.1:${port}`;
-const config = { version: 1 as const, bind: "127.0.0.1" as const, port, extra_origins: [], claude_executable: "/usr/bin/true" };
+const config = { version: 1 as const, bind: "127.0.0.1" as const, port, page_port: port + 1, extra_origins: [], claude_executable: "/usr/bin/true" };
 let secret: string;
 let server: ReturnType<typeof serve>;
 let projection: InstanceType<typeof Projection>;
@@ -41,7 +42,7 @@ beforeAll(async () => {
   await ptyd.start();
   hub.start();
   stops = new StopControl(ptyd);
-  server = serve({ config, auth, hub, projection, ptyd, trays, stops });
+  server = serve({ config, auth, hub, projection, ptyd, trays, stops, pins: new Pins(`http://localhost:${port + 1}`) });
 });
 
 afterAll(() => {

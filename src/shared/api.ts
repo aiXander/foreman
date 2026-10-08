@@ -65,6 +65,44 @@ export interface SessionView {
   terminal_progress: Progress | null;
   /** The last Stop (one ESC) on this session's terminal, until its next turn starts. */
   stop: StopInfo | null;
+  /** The page this session mounted (foreman_page), with the pin that serves it; null = none. */
+  page: SessionPage | null;
+}
+
+export interface SessionPage {
+  pin_id: string;
+  path: string;
+  title: string;
+  /** The frame URL on the page origin (carries the pin's capability token). */
+  url: string;
+  /** What the page may save itself, relative to its folder ("data.json", "inbox/"); [] = read-only. */
+  writable: string[];
+}
+
+/**
+ * A page pin (plan 01_pages item 5): outlives its session, listed in the sidebar. `session` is the
+ * session whose latest foreman_page call named this file; tells go only to it.
+ */
+export interface PinView {
+  pin_id: string;
+  path: string;
+  title: string;
+  url: string;
+  session: string | null;
+  /** Where "Start agent" launches: the bound session's cwd when it bound, else the page's folder. */
+  cwd: string;
+  /** What the page may save itself; Start agent re-declares it. */
+  writable: string[];
+  bound_at: string;
+}
+
+export interface TellRequest {
+  /** Idempotency key; becomes the batch id (and its single note action's id). */
+  batch_id: string;
+  pin_id: string;
+  text: string;
+  /** Optional structured context from the page, sent as compact JSON. */
+  context?: unknown;
 }
 
 export interface StopInfo {
@@ -92,6 +130,8 @@ export interface DeliverySummary {
 export interface BatchView {
   batch_id: string;
   kind: "send" | "pause";
+  /** `page`: a tell from the session's page (no tray). */
+  via: "page" | null;
   run: string;
   current_run: boolean;
   status: BatchStatusView;
@@ -124,6 +164,9 @@ export interface SessionsResponse {
   cursor: number;
   sessions: SessionView[];
   terminals: TerminalInfo[];
+  pins: PinView[];
+  /** Origin of the page listener (the frame-src the UI may embed). */
+  page_origin: string;
 }
 
 export interface SessionDetailResponse {
@@ -193,6 +236,10 @@ export type StreamEvent =
   | { type: "session"; session: SessionView }
   | { type: "session_removed"; id: string }
   | { type: "terminal"; terminal: TerminalInfo }
+  /** The whole pin list, whenever it changes. */
+  | { type: "pins"; pins: PinView[] }
+  /** A file in a pinned page's folder changed (debounced): the host reloads that frame. */
+  | { type: "page"; pin_id: string }
   | { type: "resync_required"; epoch: string };
 
 /** Browser ⇄ daemon terminal WebSocket frames (JSON text). */

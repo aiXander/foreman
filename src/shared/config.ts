@@ -10,6 +10,11 @@ export interface Config {
   version: 1;
   bind: "127.0.0.1";
   port: number;
+  /**
+   * The page listener (pages: reads, and a page's saves to its declared files). It serves `http://localhost:<page_port>`: a different host
+   * name from the daemon's 127.0.0.1, because cookies ignore ports. Default: port + 1.
+   */
+  page_port: number;
   /** Extra browser origins allowed besides the daemon's own (e.g. the Vite dev server). */
   extra_origins: string[];
   /** Absolute path to the real Claude executable; null = resolve from PATH, skipping wrappers. */
@@ -20,10 +25,12 @@ const DEFAULT_PORT = 7717;
 
 export function loadConfig(): Config {
   const raw = readJson<Partial<Config>>(paths.config()) ?? {};
+  const port = Number.isInteger(raw.port) ? raw.port! : Number(process.env.FOREMAN_PORT) || DEFAULT_PORT;
   return {
     version: 1,
     bind: "127.0.0.1",
-    port: Number.isInteger(raw.port) ? raw.port! : Number(process.env.FOREMAN_PORT) || DEFAULT_PORT,
+    port,
+    page_port: Number.isInteger(raw.page_port) ? raw.page_port! : Number(process.env.FOREMAN_PAGE_PORT) || port + 1,
     extra_origins: Array.isArray(raw.extra_origins) ? raw.extra_origins : [],
     claude_executable: typeof raw.claude_executable === "string" ? raw.claude_executable : null,
   };

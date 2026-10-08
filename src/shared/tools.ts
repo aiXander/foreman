@@ -2,7 +2,8 @@
 // Every mutation is one read-decide-append under the session's journal lock (Journal.transact):
 // the target check, revision checks and §8.2 limits see exactly the state the append lands on.
 // Nothing is reported as done before it is fsynced.
-import { readdirSync, readFileSync } from "node:fs";
+import { lstatSync, readdirSync, readFileSync, realpathSync, statSync } from "node:fs";
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
 import type { z } from "zod";
 import type { Payload, EventType, Source } from "./events";
 import { validatePayload } from "./events";
@@ -10,9 +11,10 @@ import { JournalError, type Stored } from "./journal";
 import { LockTimeout } from "./lock";
 import { paths } from "./paths";
 import { PEER_BUDGET_MS, readPeers, type Peer } from "./peers";
-import { AskInput, BriefInput, HandoverInput, InboxInput, LIMITS, PeersInput, PostInput, ProgressInput, ResolveInput, ToolError, toolSpec, validationError, type ToolResult } from "./protocol";
+import { AskInput, BriefInput, HandoverInput, InboxInput, LIMITS, PageInput, PeersInput, PostInput, ProgressInput, ResolveInput, ToolError, toolSpec, validationError, type ToolResult } from "./protocol";
 import { foldJournal, type JournalState } from "./reducer";
 import { LOCK_TIMEOUT, readManifest, sessionJournal } from "./store";
+import { badSegment, CODE_EXT } from "./writable";
 import { batchStatus, isActionable, openCounts, type ItemState, type WorkState } from "./work";
 
 export interface ToolContext {
@@ -241,6 +243,33 @@ const HANDLERS: Record<string, Handler> = {
     return { ...r, result: { ...((r.result as object) ?? {}), ...(listing as object) } };
   },
 
+  foreman_page: (input: z.output<typeof PageInput>, ctx) =>
+    mutate(
+      "foreman_page",
+      input,
+      ctx,
+      (s) => {
+        if (input.path === null) return { drafts: [{ type: "page.set", payload: { path: null, title: null } }], result: null };
+        const path = mountablePage(input.path, s);
+        const title = input.title ?? basename(path).replace(/\.html?$/i, "").slice(0, 80);
+        const writable = writableEntries(input.writable ?? [], dirname(path));
+        return { drafts: [{ type: "page.set", payload: { path, title, writable } }], result: null };
+      },
+      (ev) => {
+        const p = ev[0]!.payload as Payload<"page.set">;
+        if (!p.path) return { page: null };
+        const writable = p.writable ?? [];
+        return {
+          page: p.path,
+          title: p.title,
+          writable,
+          note: writable.length
+            ? "Shown in Foreman. The page saves direct edits to its writable files itself (PUT with If-Match), without telling you: re-read a writable file right before you change it, and write it atomically (tmp + rename). What the human says from the page reaches you as notes marked [page <title>]."
+            : "Shown in Foreman, read-only: the page can't save anything itself. What the human says from it reaches you as notes marked [page <title>]. Edit the files to change the page; Foreman reloads it when they change.",
+        };
+      },
+    ),
+
   foreman_peers: (input: z.output<typeof PeersInput>, ctx) => {
     const s = read(input.target, ctx);
     const snap = readPeers({ session: s.session, native_id: s.native_id, project: s.project }, PEER_BUDGET_MS.tool);
@@ -267,6 +296,76 @@ function peerResult(p: Peer) {
 
 /** Tools this build serves. */
 export const HANDLED_TOOLS = new Set(Object.keys(HANDLERS));
+
+// ---------- pages ----------
+
+/**
+ * The realpath of an existing .html file under the session's cwd (or its own pages dir in the
+ * Foreman home). Symlinks are resolved first, so a link that points outside is refused.
+ */
+function mountablePage(raw: string, s: JournalState): string {
+  const abs = isAbsolute(raw) ? raw : resolve(s.cwd, raw);
+  let real: string;
+  try {
+    real = realpathSync(abs);
+  } catch {
+    throw new ToolError("VALIDATION", `no file at ${abs}; write the page first, then mount it`, "path");
+  }
+  if (!/\.html?$/i.test(real)) throw new ToolError("VALIDATION", "a page must be an .html file", "path");
+  if (basename(real).startsWith(".")) throw new ToolError("VALIDATION", "a page can't be a dotfile", "path");
+  if (!statSync(real).isFile()) throw new ToolError("VALIDATION", "a page must be a regular file", "path");
+  const roots = [s.cwd, paths.sessionPages(s.session)].map(realOrNull);
+  if (!roots.some((root) => root && isInside(root, real))) {
+    throw new ToolError("VALIDATION", `the page must be inside your working directory (${s.cwd}) or ${paths.sessionPages(s.session)}`, "path");
+  }
+  return real;
+}
+
+/**
+ * The declared writable entries, deduplicated: relative to the page's folder (`dir`, a realpath),
+ * no dot or empty segments, no code files, not a symlink, and by realpath inside the folder. A
+ * directory (trailing "/") must exist; a file may not exist yet.
+ */
+function writableEntries(raw: string[], dir: string): string[] {
+  for (const entry of raw) {
+    const why = writableProblem(entry, dir);
+    if (why) throw new ToolError("VALIDATION", `writable "${entry}": ${why}`, "writable");
+  }
+  return [...new Set(raw)];
+}
+
+function writableProblem(entry: string, dir: string): string | null {
+  const isDir = entry.endsWith("/");
+  const rel = isDir ? entry.slice(0, -1) : entry;
+  if (isAbsolute(rel)) return "must be relative to the page's folder";
+  if (rel.split("/").some(badSegment)) return 'no empty, "..", or dot-prefixed segments';
+  if (!isDir && CODE_EXT.test(rel)) return "a page can't write code (.html .js .css .svg .wasm); edit those files yourself";
+  return placeProblem(join(dir, rel), isDir, dir);
+}
+
+/** An existing entry must be the right kind and resolve inside the folder; a new file's parent may be the folder itself. */
+function placeProblem(abs: string, isDir: boolean, dir: string): string | null {
+  const st = lstatSync(abs, { throwIfNoEntry: false });
+  const kindOk = isDir ? st?.isDirectory() === true : !st || st.isFile();
+  if (!kindOk) return isDir ? "the directory must exist (and not be a symlink)" : "must be a regular file, not a directory or symlink";
+  const real = realOrNull(st ? abs : dirname(abs));
+  return (!st && real === dir) || isInside(dir, real) ? null : "its folder must exist inside the page's folder";
+}
+
+const realOrNull = (p: string) => {
+  try {
+    return realpathSync(p);
+  } catch {
+    return null;
+  }
+};
+
+/** `p` is strictly inside `root` (both realpaths). */
+function isInside(root: string, p: string | null): boolean {
+  if (!p) return false;
+  const rel = relative(root, p);
+  return rel !== "" && !rel.startsWith(`..${sep}`) && rel !== ".." && !isAbsolute(rel);
+}
 
 // ---------- item helpers ----------
 

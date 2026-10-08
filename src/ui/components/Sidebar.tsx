@@ -1,4 +1,4 @@
-import type { SessionView } from "../../shared/api";
+import type { PinView, SessionView } from "../../shared/api";
 import { basename, modeLabel, sessionTitle, sortSessions } from "../format";
 import { href, type Route } from "../route";
 import { Lamp } from "./Lamp";
@@ -31,7 +31,7 @@ export function Logo({ size = 22 }: { size?: number }) {
   );
 }
 
-export function Sidebar({ sessions, route }: { sessions: SessionView[]; route: Route }) {
+export function Sidebar({ sessions, pins, route }: { sessions: SessionView[]; pins: PinView[]; route: Route }) {
   const groups = groupByProject(sessions);
   const activeId = route.name === "session" ? route.id : null;
   return (
@@ -51,6 +51,7 @@ export function Sidebar({ sessions, route }: { sessions: SessionView[]; route: R
       </div>
       <div className="mx-4 h-px bg-gradient-to-r from-line-2 via-line to-transparent" />
       <div className="min-h-0 flex-1 overflow-y-auto px-2 pt-3 pb-4">
+        <PinsSection pins={pins} sessions={sessions} activePin={route.name === "page" ? route.id : null} />
         {groups.length === 0 ? (
           <p className="px-2 py-3 text-[13px] text-ink-3">No sessions yet.</p>
         ) : (
@@ -90,6 +91,41 @@ function SessionLink({ s, active }: { s: SessionView; active: boolean }) {
       <span className="min-w-0 flex-1 truncate">{sessionTitle(s)}</span>
       {s.unsent > 0 ? <UnsentBadge n={s.unsent} /> : null}
       <span className="flex-none text-[10.5px] text-ink-3">{modeLabel[s.mode]}</span>
+    </a>
+  );
+}
+
+/** Pages pinned by foreman_page calls, above the sessions; they outlive the session that mounted them. */
+function PinsSection({ pins, sessions, activePin }: { pins: PinView[]; sessions: SessionView[]; activePin: string | null }) {
+  if (!pins.length) return null;
+  return (
+    <section className="mb-4">
+      <h2 className="eyebrow px-2 pb-1.5">Pages</h2>
+      <ul className="space-y-px">
+        {pins.map((p) => (
+          <li key={p.pin_id}>
+            <PinLink p={p} agent={sessions.find((s) => s.id === p.session) ?? null} active={activePin === p.pin_id} />
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
+/** A pinned page: lamp = its bound agent (hollow when there is none or it ended). */
+function PinLink({ p, agent, active }: { p: PinView; agent: SessionView | null; active: boolean }) {
+  const live = agent !== null && agent.state !== "dead";
+  return (
+    <a
+      href={href({ name: "page", id: p.pin_id })}
+      aria-current={active ? "page" : undefined}
+      title={p.path}
+      className="group relative flex items-center gap-2.5 rounded-md px-2 py-1.5 text-[13px] text-ink-2 hover:bg-panel-2 hover:text-ink aria-[current=page]:bg-panel-3 aria-[current=page]:text-white aria-[current=page]:shadow-[inset_0_1px_0_rgb(255_255_255/0.05)]"
+    >
+      <span aria-hidden className="absolute top-1.5 bottom-1.5 -left-2 hidden w-[3px] rounded-r bg-accent shadow-[0_0_10px_var(--accent)] group-aria-[current=page]:block" />
+      <Lamp state={live ? agent.state : "unknown"} title={live ? undefined : "No agent"} />
+      <span className="min-w-0 flex-1 truncate">{p.title}</span>
+      {live ? null : <span className="flex-none text-[10.5px] text-ink-3">no agent</span>}
     </a>
   );
 }

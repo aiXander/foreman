@@ -8,7 +8,7 @@ import { validatePayload } from "./events";
 import type { Draft, Stored } from "./journal";
 import { paths } from "./paths";
 import { selfStart } from "./proc";
-import { BatchAction, MAX_BATCH_ACTIONS, MAX_BATCH_TEXT_BYTES, ToolError } from "./protocol";
+import { BatchAction, MAX_BATCH_ACTIONS, MAX_BATCH_TEXT_BYTES, MAX_TELL_TEXT, ToolError } from "./protocol";
 import { foldJournal, type JournalState } from "./reducer";
 import { LOCK_TIMEOUT, sessionJournal } from "./store";
 import { batchStatus, queueHead, reduceWork, type BatchState, type WorkState } from "./work";
@@ -55,6 +55,24 @@ export function renderAction(a: BatchAction, w: WorkState): string {
   }
 }
 
+/**
+ * A page's tell as the note action's text: `[page <title>] <text>` plus `context: <compact JSON>`.
+ * The note action's 2,000-character limit applies to the whole thing.
+ */
+export function tellNote(title: string, text: string, context?: unknown): string {
+  const body = text.trim();
+  if (!body) throw new ToolError("VALIDATION", "a tell needs text", "text");
+  let ctx = "";
+  if (context !== undefined) {
+    const json = JSON.stringify(context);
+    if (json === undefined) throw new ToolError("VALIDATION", "context must be JSON", "context");
+    ctx = `\ncontext: ${json}`;
+  }
+  const note = `[page ${title}] ${body}${ctx}`;
+  if (note.length > MAX_TELL_TEXT) throw new ToolError("LIMIT", `a tell renders to ${note.length} characters; at most ${MAX_TELL_TEXT} (title, text and context together)`, "text");
+  return note;
+}
+
 // Control characters (ESC could end a bracketed paste) never enter the frozen text, so every
 // batch stays typeable by ptyd's idle submit; CRLF becomes LF.
 const CONTROL = /[\u0000-\u0008\u000b-\u001f\u007f-\u009f]/g;
@@ -87,6 +105,7 @@ export interface NewBatch {
   run: string;
   kind: "send" | "pause";
   actions: BatchAction[];
+  via?: "page";
 }
 
 /** Why a staged item action can no longer be sent as-is (the item moved on), or null. */
@@ -110,7 +129,7 @@ function freeze(s: JournalState | null, session: string, nb: NewBatch): Draft {
   }
   const text = renderBatch(nb.actions, s.work);
   if (Buffer.byteLength(text) > MAX_BATCH_TEXT_BYTES) throw new ToolError("LIMIT", `batch text exceeds ${MAX_BATCH_TEXT_BYTES} bytes`);
-  const payload = validatePayload("batch.created", { batch_id: nb.batch_id, run: nb.run, kind: nb.kind, actions: nb.actions, text });
+  const payload = validatePayload("batch.created", { batch_id: nb.batch_id, run: nb.run, kind: nb.kind, actions: nb.actions, text, ...(nb.via ? { via: nb.via } : {}) });
   return { type: "batch.created", payload, fields: { session, run: nb.run, source: "daemon" } };
 }
 
@@ -130,7 +149,7 @@ export function createBatch(session: string, nb: NewBatch): { batch: BatchState;
   const tx = sessionJournal(session).transact((events) => ({ drafts: [freeze(foldJournal(events), session, { ...nb, actions })], result: null }), {
     lockTimeoutMs: LOCK_TIMEOUT.mutation,
     durable: true,
-    request: { id: nb.batch_id, hash: sha([nb.run, nb.kind, actions]) },
+    request: { id: nb.batch_id, hash: sha(nb.via ? [nb.run, nb.kind, actions, nb.via] : [nb.run, nb.kind, actions]) },
   });
   const batch = foldJournal(sessionJournal(session).readAll())!.work.batches[nb.batch_id]!;
   return { batch, replayed: tx.replayed };
@@ -169,7 +188,7 @@ export function retargetBatch(session: string, oldBatchId: string, newBatchId: s
       const st = batchStatus(b);
       if (st !== "queued") throw new ToolError("CONFLICT", `batch is ${st}; only a batch that was never handed over can be retargeted`);
       const actions = b.actions.map((a) => ({ ...a, action_id: crypto.randomUUID() }));
-      const created = freeze(s, session, { batch_id: newBatchId, run: s.run, kind: "send", actions });
+      const created = freeze(s, session, { batch_id: newBatchId, run: s.run, kind: "send", actions, ...(b.via ? { via: b.via } : {}) });
       const cancel = validatePayload("batch.cancelled", { batch_id: oldBatchId, reason: `moved to the current run as batch ${newBatchId}`, by: "human" });
       return { drafts: [{ type: "batch.cancelled", payload: cancel, fields: { session, run: s.run, source: "daemon" } }, created], result: null };
     },
