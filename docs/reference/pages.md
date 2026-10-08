@@ -19,8 +19,11 @@ like a web page; the agent is for talking. So:
 
 Foreman's write primitive is generic on purpose ("replace this whole file if it is still the version you
 read"): no records, fields, schemas or merge logic (D20). Code files are never page-writable, so the
-page's behaviour changes only through the agent. The agent re-reads a writable file before changing it
-and writes atomically (contract + skill say so); long input (a transcript) goes through a writable inbox
+page's behaviour changes only through the agent. The agent edits data files with its own tools: it
+re-reads a writable file right before changing it and makes targeted edits (Claude Code's Edit refuses a
+file changed since it was read, so it can't overwrite a page save it hasn't seen), and it searches a large
+data file with Grep/`jq` instead of reading it whole (contract + skill say so). No agent-side helper or
+write format exists on purpose; durable history for important data is the project's git. Long input (a transcript) goes through a writable inbox
 directory plus a short tell naming the file, since a tell is capped at 2,000 characters.
 
 ## The loops

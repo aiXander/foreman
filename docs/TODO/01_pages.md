@@ -16,7 +16,7 @@ other, the agent is not told about direct edits) and how it works: [reference/pa
 
 | Step | Work | Exit evidence | Estimate |
 |---|---|---|---|
-| **P2 · CRM** | The CRM folder's side: direct edits through `PUT`, Tell boxes, transcript drop into `inbox/`, the CRM agent's reasoning rules, a write helper, retire `serve.py`. Spec: `~/Documents/me/CRM/docs/TODO/agentic_crm.md`. P1b is done. | The CRM's exit check (direct edits, Voka talk, transcript, no clobber) | ~0.5–1 d |
+| **P2 · CRM** | The CRM folder's side: direct edits through `PUT`, Tell boxes, transcript drop into `inbox/`, the CRM agent's rules in the CRM's `CLAUDE.md` (no write helper: the agent uses Grep/`jq`, Read and Edit; `contacts.json` is in git), retire `serve.py`. Spec: `~/Documents/me/CRM/docs/TODO/agentic_crm.md`. P1b is done. | The CRM's exit check (direct edits, Voka talk, transcript, no clobber) | ~0.5–1 d |
 | **P3 · Point at it** | Alt-click any element → tell with its selector + trimmed `outerHTML` ("this one, smaller"). Needs a small injected script, the one exception to "no injection"; decide then. | — | ~0.5 d |
 
 ## Constraints from P1 that P1b, P2 and P3 must respect
@@ -34,7 +34,8 @@ other, the agent is not told about direct edits) and how it works: [reference/pa
 
 ## Deliberately not here
 
-Record- or field-level write APIs, server-side merge logic, schema or domain validation in Foreman,
+Agent-side write helpers, formats or rituals beyond what Claude Code's own tools do (decided 2026-10-08),
+record- or field-level write APIs, server-side merge logic, schema or domain validation in Foreman,
 data-change events pushed into the page (it reloads, or it already knows because it wrote), page versioning
 beyond the last-5 backups (the folder's git is the undo), notifying the agent of direct edits, a component
 library.

@@ -44,7 +44,7 @@ export function buildContract(c: ContractInput): string {
           "",
           "Pages: foreman_page shows a plain .html file from your working directory (or a throwaway one under " +
             c.pagesDir +
-            ") beside your card. Two channels: direct edits (a toggle, a field, a delete) the page saves itself to the data files you declare writable, with no message to you; talking and requests to change the page reach you as notes \"[page <title>] <text>\" plus an optional \"context: <json>\", the human's instructions. Before you change a writable file, re-read it (the human may just have edited it) and write it atomically (tmp + rename). You alone change the page's code; Foreman reloads the frame when files change. The skill's Pages section has the snippets.",
+            ") beside your card. Two channels: direct edits (a toggle, a field, a delete) the page saves itself to the data files you declare writable, with no message to you; talking and requests to change the page reach you as notes \"[page <title>] <text>\" plus an optional \"context: <json>\", the human's instructions. Change data files with your normal tools: re-read a writable file right before you change it (the human may just have edited it) and make targeted edits, never rewrite it from an older copy; search a large data file (grep, jq) instead of reading it whole. You alone change the page's code; Foreman reloads the frame when files change. The skill's Pages section has the snippets.",
         ]
       : []),
     ...(c.peers ? ["", c.peers] : []),

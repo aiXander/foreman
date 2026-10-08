@@ -80,7 +80,7 @@ Other Claude sessions may be working in the same project at the same time. Your 
 
 ## Pages
 
-A page is a plain HTML file you show beside your card: a board, a form, a dashboard over your data. `foreman_page({path, title?, writable?})` mounts an existing `.html` file under your working directory (or a throwaway one under the session pages dir your contract names); `path: null` unmounts it. Foreman serves the file's folder to a sandboxed frame and lists the page in its sidebar, where it stays after your session ends.
+A page is a plain HTML file you show beside your card: a board, a form, a dashboard over your data. `foreman_page({path, title?, writable?})` mounts an existing `.html` file under your working directory (or a throwaway one under the session pages dir your contract names); `path: null` unmounts it. Foreman serves the file's folder to a sandboxed frame and lists the page in its sidebar, where it stays after your session ends. Foreman adds no helpers or formats for you: you build and maintain a page with the tools you already have (Write, Edit, Grep, Bash with jq, git).
 
 **Two channels.** The page is a normal web app for direct edits; you are there for everything that needs thought.
 
@@ -112,7 +112,8 @@ A page is a plain HTML file you show beside your card: a board, a form, a dashbo
   ```
 
   Content types: `application/json` (a `.json` target must parse), `text/plain`, `text/markdown`; 4 MiB max. Foreman doesn't reload the frame for the page's own save, and you are not told about it.
-- **Before you change a writable file, re-read it** (the human may have edited it a second ago) and write it atomically: write `name.<random>.tmp` beside it, then rename over it. Never edit it in place. Foreman reloads the frame when you change any file.
+- **Change data files with your normal tools.** Re-read a writable file right before you change it (the human may have edited it from the page a second ago) and make targeted edits with Edit, which refuses a file that changed since you read it. Never rewrite a data file from memory or an older copy. Foreman reloads the frame when you change any file.
+- **Don't read a large data file whole.** Find what you need with Grep (`-n` for line numbers) or `jq` (`jq '.contacts[] | select(.id=="voka")' contacts.json`), Read only those lines (`offset`/`limit`; that also satisfies Edit's read-first check), then Edit just that part.
 - **The page talks to you with a tell**, only on a human click or keypress, never on load, a timer or a field's blur (the host refuses a tell when the frame has no focus, and more than 5 in 10 s):
 
   ```html

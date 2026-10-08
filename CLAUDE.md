@@ -13,6 +13,10 @@ channel back, never a replacement agent runtime. Two consequences guide every de
   itself: hosting, showing, reloading, saving the human's direct edits to data files the agent declared
   writable, and carrying what the human says back as messages. No component
   catalogs, schemas or per-domain APIs.
+- **Native over bespoke.** Agents work with what Claude Code already does: Read/Edit/Grep, Bash with `jq`,
+  git, its own permission and checkpoint machinery. Foreman never adds helper scripts, write formats or
+  write rituals for agents; their instructions say *what* to change, in plain words (a project's
+  `CLAUDE.md`, the skill), never a custom tool to do it with.
 - **Attention is the product.** The measure is the human's effort to supervise and steer: cards with
   goal/progress/needs-you, answers by clicking, one Send per batch, one click to the live terminal.
 
